@@ -1,0 +1,93 @@
+# Development and integration-test databases.
+# Ports bind to localhost only, and the passwords are throwaway dev values.
+#
+#   docker compose up -d --wait             default: newest of each
+#   docker compose --profile matrix up -d   adds the oldest supported versions
+#
+# Alpine everywhere it exists. Oracle publishes no Alpine MySQL image and Alpine's
+# "mysql" package is really MariaDB, so real MySQL uses the official image.
+
+x-pg-env: &pg-env
+  POSTGRES_USER: tessera
+  POSTGRES_PASSWORD: tessera_dev
+  POSTGRES_DB: tessera_test
+
+x-pg-health: &pg-health
+  test: ["CMD-SHELL", "pg_isready -U tessera -d tessera_test"]
+  interval: 2s
+  timeout: 3s
+  retries: 60
+
+x-mysql-env: &mysql-env
+  MYSQL_ROOT_PASSWORD: tessera_root
+  MYSQL_USER: tessera
+  MYSQL_PASSWORD: tessera_dev
+  MYSQL_DATABASE: tessera_test
+
+x-mysql-health: &mysql-health
+  test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -ptessera_root --silent"]
+  interval: 2s
+  timeout: 3s
+  retries: 90
+
+x-mariadb-env: &mariadb-env
+  MARIADB_ROOT_PASSWORD: tessera_root
+  MARIADB_USER: tessera
+  MARIADB_PASSWORD: tessera_dev
+  MARIADB_DATABASE: tessera_test
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment: *pg-env
+    ports: ["127.0.0.1:55418:5432"]
+    healthcheck: *pg-health
+    volumes:
+      - ./test/fixtures/postgres.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro
+
+  mysql:
+    image: mysql:8.4
+    environment: *mysql-env
+    ports: ["127.0.0.1:53384:3306"]
+    healthcheck: *mysql-health
+    volumes:
+      - ./test/fixtures/mysql.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro
+
+  mariadb:
+    build:
+      context: docker/mariadb-alpine
+      args: { ALPINE_VERSION: "3.22" } # MariaDB 11.4
+    image: tessera/mariadb:11.4-alpine
+    environment: *mariadb-env
+    ports: ["127.0.0.1:53114:3306"]
+    volumes:
+      - ./test/fixtures/mysql.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro
+
+  postgres-oldest:
+    profiles: [matrix]
+    image: postgres:14-alpine
+    environment: *pg-env
+    ports: ["127.0.0.1:55414:5432"]
+    healthcheck: *pg-health
+    volumes:
+      - ./test/fixtures/postgres.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro
+
+  mysql-oldest:
+    profiles: [matrix]
+    image: mysql:8.0
+    environment: *mysql-env
+    ports: ["127.0.0.1:53380:3306"]
+    healthcheck: *mysql-health
+    volumes:
+      - ./test/fixtures/mysql.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro
+
+  mariadb-oldest:
+    profiles: [matrix]
+    build:
+      context: docker/mariadb-alpine
+      args: { ALPINE_VERSION: "3.20" } # MariaDB 10.11
+    image: tessera/mariadb:10.11-alpine
+    environment: *mariadb-env
+    ports: ["127.0.0.1:53111:3306"]
+    volumes:
+      - ./test/fixtures/mysql.sql:/docker-entrypoint-initdb.d/01-fixture.sql:ro

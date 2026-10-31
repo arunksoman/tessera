@@ -1,0 +1,261 @@
+# Tessera Tasks
+
+Implementation checklist for [design.md](design.md). Section numbers below refer to that document.
+
+## Scope
+
+**In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB and PostgreSQL.
+
+**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, SQLite tile, third-party plugins and the gRPC host, query sharing and charts.
+
+**Changes from the design:**
+
+- No internal Redis tile, so the `tile` contract is tested on SQL only. It stays `v0`, and NoSQL may force breaking changes to it later.
+- No Wails spike, `Transport` abstraction, `go.work`, or `desktop/` module. The HTTP API and SPA stay free of desktop assumptions, so these can be added later.
+
+## Decisions needed first
+
+- [x] GitHub owner: `github.com/arunksoman`
+- [x] License: MIT
+- [x] Oldest supported servers: PostgreSQL 14+, MySQL 8.0+, MariaDB 10.11+
+- [x] `tess serve` starts as a localhost tool and becomes a team service in Phase 3
+- [x] Name "Tessera" accepted
+
+## Phase 0: Spikes
+
+Each result can change the design. Results are in [spike-results.md](spike-results.md).
+
+- [x] Build a virtual grid prototype with 1M rows and scaled scrolling
+- [ ] Measure grid frame rate in Chromium, Firefox, and WebKit against the 55 FPS target
+- [ ] Test the grid with a screen reader and decide DOM versus canvas fallback
+- [ ] Stream PostgreSQL rows through `pgconn` to a spool to the browser, and measure throughput and memory
+- [ ] Stream MySQL rows the same way, including a slow reader against `net_write_timeout`
+- [x] Prove MySQL cancel through `KILL QUERY` on a second connection
+- [x] Prove PostgreSQL cancel through `CancelRequestContextWatcherHandler`
+- [x] Measure binary size with `modernc.org/sqlite` and the Charm stack
+- [ ] Run CodeMirror and SvelteKit static output under the strict CSP
+- [x] Verify whether `go-sql-driver/mysql` exposes the original table name of result columns
+- [x] Verify MariaDB `parsec` auth and `charm.land/huh/v2`
+- [ ] Verify the Windows SSH agent pipe through `os.OpenFile`
+- [x] Revise the performance targets from these measurements
+
+**Exit:** targets are confirmed or revised, and the grid approach is chosen.
+
+## Phase 1: MVP
+
+### Project setup
+
+- [x] Run `git init`, then add `go.mod`, `.gitignore`, license, and README
+- [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/server`, `internal/tui`, `internal/spool`, `internal/wire`, and `internal/meta` remain)
+- [x] Set up CI for `go vet`, `go test`, `gofmt`, and `CGO_ENABLED=0` builds on Linux, macOS, and Windows
+- [x] Add `govulncheck` per `GOOS`
+- [ ] Add `osv-scanner` once npm dependencies exist
+- [ ] Add the dependency allowlist check
+- [x] Add the `docker compose` database matrix behind `//go:build integration`
+- [ ] Add benchmarks with `benchstat`, and fail CI on a regression over 10%
+
+### Tile contract
+
+- [x] Move `design-spec/tile-api-sketch.go` into `tile/`, marked `v0`
+- [x] Remove facets and types that neither SQL tile needs yet
+- [x] Build the `tiletest` conformance suite: streaming, cancel, read-only, tree paging, hostile identifiers
+- [ ] Add browse and plan purity to `tiletest`, once those facets exist
+
+### Platform services
+
+- [x] Secrets: master key in the OS keychain, AES-256-GCM blobs, Argon2id fallback, key file option
+- [x] Add a secret type that always prints `[redacted]`
+- [ ] Add a redacting `slog` handler
+- [x] Store: TOML config and profiles under `~/.config/tessera/`, SQLite state with migrations
+- [ ] Dialer: dial policy and SSH chains with password, key, agent, keyboard-interactive, and jump hosts
+- [ ] Check SSH host keys against `known_hosts` with trust on first use
+- [ ] Token helper command for cloud auth, config-file only in server mode
+
+### Engine
+
+- [x] Open saved profiles, with connection reuse inside each tile
+- [ ] Connection manager: multiple simultaneous connections, open-connection cap, idle close
+- [x] Sessions pinned to one connection, with state reset on close
+- [ ] Long-lived sessions for console tabs, with explicit transactions
+- [x] Executor with `context` cancel and timeouts
+- [ ] Encrypted result spool: size cap, random page reads, delete on close, sweep at startup
+- [ ] Drain into the spool, then cancel at the cap and report truncation
+- [ ] Binary page format in `internal/wire`, with fuzz tests
+- [ ] Metadata cache with lazy loading, TTL, and invalidation on DDL
+- [x] History with redaction and a pruning function
+- [ ] Run history pruning on a retention setting, and add a per-connection off switch
+- [x] Audit log with a hash chain
+
+### SQL language support
+
+- [x] Tolerant lexer with PostgreSQL rules: dollar quotes, `E''` strings, comments
+- [x] Add MySQL rules: backticks, backslash strings, `#` comments, `/*! */` treated as code
+- [ ] Support `DELIMITER` in the splitter
+- [x] Statement splitter
+- [x] Default-deny statement classifier, with corpus and fuzz tests
+- [x] Statement redaction for `PASSWORD '...'` and similar
+- [ ] Clause tracker and alias, CTE, and subquery scope resolution
+- [ ] Ranked completion from the metadata cache, with keywords and functions from the live server
+- [ ] On-demand server-side validation: protocol `Parse` for PostgreSQL, `PREPARE` for MySQL
+
+### PostgreSQL tile
+
+- [x] Connect over TCP, verifying TLS by default
+- [ ] Test Unix socket, all `sslmode` values, and client certificates against a TLS-enabled server
+- [x] SCRAM auth, tested against PostgreSQL 14 and 18
+- [ ] Test MD5, cert, and peer auth
+- [ ] Token helper passwords
+- [x] Streaming execution with `ResultReader` in text format
+- [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
+- [ ] Add databases and functions to the tree
+- [ ] Browse with keyset pagination, filter AST, sort, and estimated count
+- [ ] Edit plan and apply with guarded updates, and editable detection from result metadata
+- [ ] Explain as text and JSON
+- [x] Server read-only transactions
+- [x] Pass the current `tiletest` (versions in the conformance run)
+- [ ] Pass `tiletest` with browse and plan purity
+
+### MySQL and MariaDB tile
+
+- [x] Connect over TCP, with all five TLS modes tested against a self-signed server
+- [ ] Test Unix socket, client certificates, and a successful `VERIFY_IDENTITY` with a trusted CA
+- [x] `caching_sha2` (MySQL) and `native` (MariaDB) auth
+- [ ] Test `sha256` and `client_ed25519` auth
+- [ ] Token helper passwords
+- [x] Refuse `mysql_clear_password` without TLS, and keep `allowAllFiles=false`
+- [x] Streaming execution with `sql.RawBytes`
+- [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
+- [ ] Add routines to the tree
+- [ ] Browse with keyset pagination, filter AST, sort, and estimated count
+- [ ] Edit plan and apply with guarded updates and `clientFoundRows=true`
+- [ ] Explain as text and JSON
+- [x] Server-enforced read-only (`SET SESSION TRANSACTION READ ONLY`)
+- [x] Pass the current `tiletest` (versions in the conformance run)
+- [ ] Pass `tiletest` with browse and plan purity
+
+### Safety
+
+- [x] Safety gate combining role, environment tag, classification, and confirmation
+- [x] Confirmation for `DROP`, `TRUNCATE`, and `DELETE`/`UPDATE` without `WHERE`
+- [x] Type-to-confirm on connections tagged production
+- [x] Read-only connections
+- [x] Verified TLS by default on new profiles
+- [ ] Warn when a profile uses a weak TLS mode
+
+### CLI and TUI
+
+- [x] Subcommands: `tess connect`, `tess query`, `tess history`, `tess audit verify`, profile management
+- [ ] Subcommands: `tess tui`, `tess serve`
+- [x] `tess query` output as table, CSV, and JSON, safe in pipes and scripts
+- [ ] Lip Gloss theme generated from the shared tokens, with `NO_COLOR` and color fallback
+- [ ] TUI layout: tree, editor, grid, status line, environment banner
+- [ ] TUI editor with tabs, autocomplete, and cancel
+- [ ] TUI grid with browse, sort, filter, and inline edit with preview
+- [ ] TUI connection forms rendered from `Form`
+- [ ] Shared action registry and keyboard map from section 12
+
+### Web server
+
+- [ ] Bind to `127.0.0.1`, with a per-launch token and one-time URL
+- [ ] `Host` allowlist, `CrossOriginProtection`, CSP and security headers
+- [ ] Refuse non-local binding without TLS or an explicit proxy flag
+- [ ] Single admin account with Argon2id and secure cookies
+- [ ] Build connection settings field by field, with no raw connection strings
+- [ ] API: connections, tree, describe, exec, pages, cancel, plan, apply, complete
+- [ ] One SSE event stream per browser tab, handling the HTTP/1.1 connection limit
+- [ ] Embed the frontend with `go:embed`, with a committed placeholder so builds work
+
+### Web frontend
+
+- [ ] SvelteKit static SPA with a pinned lockfile and `--ignore-scripts`
+- [ ] Design tokens as CSS variables in light and dark themes, with self-hosted fonts
+- [ ] App shell: tree, tabs, resizable panes, status bar, environment banner
+- [ ] Connection tiles with color, glyph, and label
+- [ ] CodeMirror editor with engine-driven autocomplete, tabs, and history
+- [ ] Production grid from the Phase 0 prototype, with decoding in a Web Worker
+- [ ] Browse: pagination, sort, filter, column show and hide
+- [ ] Inline edit with pending state, preview, apply, and rollback
+- [ ] Connection form rendered from `Form`
+- [ ] Empty, error, and loading states, with row progress and a cancel button
+- [ ] Render all database values as text only, with a lint rule banning `{@html}` on data
+- [ ] Add axe and Playwright tests, and bundle size budget in CI
+
+### Export
+
+- [x] Streaming CSV and JSON export
+- [x] Neutralize spreadsheet formula cells by default
+
+**Exit:** the authors use it daily on real databases, targets hold in CI, and a public alpha is released.
+
+## Phase 2: Full CRUD and administration
+
+### Data
+
+- [ ] Foreign-key jump
+- [ ] Form view for single records
+- [ ] Insert, duplicate, and bulk delete rows
+- [ ] Visual filter builder plus raw expression
+- [ ] View and edit large values through `Handle`
+
+### Structure
+
+- [ ] `Actions` pipeline with form, plan, preview, confirm, apply, and audit
+- [ ] Create, alter, and drop databases, schemas, and tables
+- [ ] Columns, indexes, and constraints
+- [ ] Views, triggers, and routines
+- [ ] Table designer with generated SQL preview
+- [ ] Show atomicity in previews, including MySQL's implicit DDL commit
+
+### Users and server
+
+- [ ] Users, roles, and grants
+- [ ] Process list and kill query
+- [ ] Server variables, status metrics, and table sizes
+- [ ] Explain plan tree view
+
+### Import and export
+
+- [ ] Streaming CSV and JSON import
+- [ ] SQL export with `INSERT` and `COPY`
+- [ ] Write-only XLSX export
+- [ ] Backup and restore through the user's `pg_dump` and `mysqldump`
+
+### Workspace
+
+- [ ] Saved queries
+- [ ] Command palette in web and TUI
+- [ ] TUI forms for all `Actions`
+- [ ] Keyboard-only grid operation that follows the ARIA grid pattern
+
+**Exit:** day-to-day administration no longer needs phpMyAdmin or DBeaver.
+
+## Phase 3: Team server and v1.0
+
+### Multi-user
+
+- [ ] User accounts and server-side session revocation
+- [ ] Connection roles: `viewer`, `reader`, `editor`, `admin`, with optional per-role database credentials
+- [ ] OIDC login
+- [ ] Rate limits per IP and account
+- [ ] Global read-only mode
+- [ ] Admin-only connection creation, with link-local and metadata addresses denied by default
+- [ ] Audit log viewer and syslog forwarding
+
+### Additional connection modes
+
+- [ ] `sslnegotiation=direct`, multi-host, and `target_session_attrs`
+- [ ] LDAP and PAM over TLS
+- [ ] PgBouncer transaction mode toggle
+- [ ] `.pgpass` and `pg_service.conf` import for the CLI, and `~/.my.cnf` import
+- [ ] Kerberos for PostgreSQL through `RegisterGSSProvider` and `gokrb5`
+
+### Release
+
+- [ ] Reproducible builds, verified by building twice in CI
+- [ ] CycloneDX SBOM, `cosign` signatures, and SLSA provenance
+- [ ] Nightly benchmarks on fixed hardware, with published results
+- [ ] User docs and a threat model page
+- [ ] External security audit, with findings resolved
+- [ ] Release v1.0
+
+**Exit:** v1.0 is released with audit findings resolved.

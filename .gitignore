@@ -1,0 +1,9 @@
+/tess
+/tess.exe
+*.test
+*.out
+coverage.*
+/dist/
+node_modules/
+web/.svelte-kit/
+.env

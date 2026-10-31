@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grid spike</title>
+<style>
+  html, body { margin: 0; height: 100%; font: 13px/28px monospace; }
+  #viewport { position: relative; height: 100vh; overflow: auto; contain: strict; }
+  #spacer { width: 1px; }
+  #window { position: sticky; top: 0; height: 0; width: max-content; }
+  .row { position: absolute; left: 0; height: 28px; display: flex; will-change: transform; contain: layout paint; }
+  .cell { width: 120px; flex: none; overflow: hidden; white-space: nowrap; box-sizing: border-box; padding: 0 6px; border-right: 1px solid #ddd; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+<div id="viewport" role="grid" aria-label="Spike results" tabindex="0">
+  <div id="window" role="presentation"></div>
+  <div id="spacer"></div>
+</div>
+<script src="grid.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  window.grid = createGrid(document.getElementById('viewport'), {
+    rows: Number(params.get('rows') || 1_000_000),
+    cols: Number(params.get('cols') || 20),
+    cell: (r, c) => `r${r}c${c}`,
+  });
+</script>
+</body>
+</html>
