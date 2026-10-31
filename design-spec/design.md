@@ -465,7 +465,7 @@ Store only the 32-byte master key in the keychain, not whole profiles. `zalando/
 ### Supply chain
 
 - `CGO_ENABLED=0`, `-trimpath`, pinned Go toolchain, and `-mod=readonly` for reproducible builds, verified by building twice in CI.
-- SBOM (CycloneDX) with each release. Releases signed with `cosign` keyless, with SLSA provenance.
+- SBOM (CycloneDX) with each release. Signed SLSA provenance through GitHub attestations, which use Sigstore keyless signing, so no separate `cosign` step is needed.
 - `govulncheck` on each supported `GOOS`, because its analysis depends on the target platform. `osv-scanner` for npm.
 - `npm ci --ignore-scripts`, a committed lockfile, and a dependency allowlist check in CI that fails on any new direct dependency without a justification entry.
 - Fuzz tests for the lexer, wire format, and CSV parser. External security audit before v1.0.
@@ -649,6 +649,8 @@ Each connection gets a tile: color and glyph, with defaults by plugin and user o
 - **Motion:** under 120 ms, and only for orientation. Respects `prefers-reduced-motion`.
 
 Tokens are one JSON source generating CSS variables and a Lip Gloss theme, so web and TUI cannot drift.
+
+Light and dark are both required for all frontend work. The theme follows the system by default, and a manual light, dark, or system choice persists without flashing on load.
 
 ### Across surfaces
 

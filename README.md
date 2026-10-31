@@ -4,6 +4,15 @@ An open-source database client with a plugin for each database. A tessera is a s
 
 **Status: early development.** The `tess` command-line client works with PostgreSQL, MySQL, and MariaDB. The terminal UI and web app are not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
 
+## Install
+
+Download an archive for your platform from [Releases](https://github.com/arunksoman/tessera/releases). To verify it:
+
+```sh
+sha256sum --check --ignore-missing sha256sums.txt
+gh attestation verify tess_0.1.0_linux_amd64.tar.gz --repo arunksoman/tessera
+```
+
 ## Build
 
 Requires Go 1.26.
@@ -70,6 +79,17 @@ Alpine is used wherever it exists. Oracle publishes no Alpine MySQL image, and A
 printf 'tessera_dev\n' | tess profile add local-pg --tile postgres --host 127.0.0.1 --port 55418 \
   --user tessera --database tessera_test --tls disable --password-stdin
 ```
+
+## Release
+
+Push an annotated version tag on a commit in `main`. The tag message becomes the release notes.
+
+```sh
+git tag -a v0.1.0 -m "Release notes here"
+git push origin v0.1.0
+```
+
+The [release workflow](.github/workflows/release.yml) runs CI, checks the build is reproducible, then publishes archives, checksums, an SBOM, and signed provenance. Web and desktop apps are not built yet: when `tess serve` exists, the web app ships inside the same binary.
 
 ## License
 

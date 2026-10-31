@@ -167,8 +167,12 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 
 ### Web frontend
 
+The grid prototype already follows light and dark themes, tested by `web/spikes/grid/theme.mjs`.
+
 - [ ] SvelteKit static SPA with a pinned lockfile and `--ignore-scripts`
 - [ ] Design tokens as CSS variables in light and dark themes, with self-hosted fonts
+- [ ] Theme follows the system by default, with a manual light, dark, or system choice that persists and does not flash on load
+- [ ] Every screen and component is tested in both themes, including the AA contrast check
 - [ ] App shell: tree, tabs, resizable panes, status bar, environment banner
 - [ ] Connection tiles with color, glyph, and label
 - [ ] CodeMirror editor with engine-driven autocomplete, tabs, and history
@@ -251,8 +255,12 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 
 ### Release
 
-- [ ] Reproducible builds, verified by building twice in CI
-- [ ] CycloneDX SBOM, `cosign` signatures, and SLSA provenance
+- [x] Reproducible builds, verified by building twice in the release job
+- [x] CycloneDX SBOM with each release
+- [x] Signed SLSA provenance through GitHub attestations (Sigstore keyless)
+- [x] Release job on version tags on `main`, for Linux, macOS, and Windows on amd64 and arm64
+- [x] Release 0.1.0 (CLI only)
+- [ ] Include the web app in releases, once `tess serve` exists
 - [ ] Nightly benchmarks on fixed hardware, with published results
 - [ ] User docs and a threat model page
 - [ ] External security audit, with findings resolved

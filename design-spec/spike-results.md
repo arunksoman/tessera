@@ -60,7 +60,7 @@ No blank frames were seen. Drag and jumps replace every cell on every frame, so 
 HEADED=1 PLAYWRIGHT_DIR=<dir with playwright installed> node web/spikes/grid/measure.mjs
 ```
 
-If drag stays low on real hardware, the first fix is to paint placeholders during fast drags, since real data needs fetching at that point anyway. Canvas is the last resort, because of accessibility.
+The rows in `index.html` still set `will-change: transform`, which gives each row its own layer and may cost frame rate. Try removing it first. If drag stays low on real hardware, the next fix is to paint placeholders during fast drags, since real data needs fetching at that point anyway. Canvas is the last resort, because of accessibility.
 
 ## Still open
 

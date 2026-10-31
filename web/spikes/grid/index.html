@@ -4,12 +4,16 @@
 <meta charset="utf-8">
 <title>Grid spike</title>
 <style>
+  /* Follows the system until a user choice sets data-theme. */
+  :root { color-scheme: light dark; }
+  :root[data-theme=light] { color-scheme: light; }
+  :root[data-theme=dark] { color-scheme: dark; }
   html, body { margin: 0; height: 100%; font: 13px/28px monospace; }
-  #viewport { position: relative; height: 100vh; overflow: auto; contain: strict; }
+  #viewport { background: light-dark(#FFFFFF, #1C1F25); color: light-dark(#1C1F24, #E7E9EC); position: relative; height: 100vh; overflow: auto; contain: strict; }
   #spacer { width: 1px; }
   #window { position: sticky; top: 0; height: 0; width: max-content; }
   .row { position: absolute; left: 0; height: 28px; display: flex; will-change: transform; contain: layout paint; }
-  .cell { width: 120px; flex: none; overflow: hidden; white-space: nowrap; box-sizing: border-box; padding: 0 6px; border-right: 1px solid #ddd; border-bottom: 1px solid #eee; }
+  .cell { width: 120px; flex: none; overflow: hidden; white-space: nowrap; box-sizing: border-box; padding: 0 6px; border-right: 1px solid light-dark(#DDD, #333A44); border-bottom: 1px solid light-dark(#EEE, #2A3038); }
 </style>
 </head>
 <body>

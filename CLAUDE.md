@@ -15,6 +15,7 @@ Tessera is a plugin-based database client in Go. Only the `tess` command-line cl
 - Work test-first, and tick items in `task.md` as they finish. Tick a box only when the whole item is done. Split a partly done item so each box stays truthful.
 - Scope is MySQL/MariaDB and PostgreSQL, with CLI, TUI, and web. Wails and NoSQL are out for now, although `design.md` still describes them.
 - `tess` must build with `CGO_ENABLED=0`. Every direct dependency needs a justification in section 11 of `design.md`.
+- All frontend work needs both light and dark themes, following the system by default, with a persistent manual choice.
 - `toolchain` in `go.mod` is pinned to a patched Go release because `govulncheck` found reachable standard library vulnerabilities in older ones. Do not lower it.
 
 ## Commands
@@ -40,6 +41,10 @@ govulncheck ./...                                 # repeat with GOOS=linux and G
 ```
 
 `internal/spike` holds Phase 0 measurements behind the `integration` tag and takes about a minute. To run the grid measurement, install Playwright outside the repo and run `PLAYWRIGHT_DIR=<dir> node web/spikes/grid/measure.mjs`. Add `HEADED=1` for visible windows, which must stay in the foreground, because a window behind others gets no animation frames.
+
+Check grid themes with `PLAYWRIGHT_DIR=<dir> node web/spikes/grid/theme.mjs`.
+
+A release comes from pushing an annotated tag like `v0.1.0` on a commit in `main`. The tag message becomes the release notes, and `scripts/release-build.sh` sets the version through `-X main.version`.
 
 Compose ports and logins are in [README.md](README.md). Alpine images are the default, except real MySQL, which has no Alpine image. MariaDB is built from `docker/mariadb-alpine`, because no official Alpine image exists either.
 
