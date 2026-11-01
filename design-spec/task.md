@@ -46,11 +46,11 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 ### Project setup
 
 - [x] Run `git init`, then add `go.mod`, `.gitignore`, license, and README
-- [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/server`, `internal/tui`, `internal/spool`, `internal/wire`, and `internal/meta` remain)
+- [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/server`, `internal/spool`, and `internal/wire` remain)
 - [x] Set up CI for `go vet`, `go test`, `gofmt`, and `CGO_ENABLED=0` builds on Linux, macOS, and Windows
 - [x] Add `govulncheck` per `GOOS`
 - [ ] Add `osv-scanner` once npm dependencies exist
-- [ ] Add the dependency allowlist check
+- [x] Add the dependency allowlist check
 - [x] Add the `docker compose` database matrix behind `//go:build integration`
 - [ ] Add benchmarks with `benchstat`, and fail CI on a regression over 10%
 
@@ -59,7 +59,7 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Move `design-spec/tile-api-sketch.go` into `tile/`, marked `v0`
 - [x] Remove facets and types that neither SQL tile needs yet
 - [x] Build the `tiletest` conformance suite: streaming, cancel, read-only, tree paging, hostile identifiers
-- [ ] Add browse and plan purity to `tiletest`, once those facets exist
+- [x] Add browse and plan purity to `tiletest`, once those facets exist
 
 ### Platform services
 
@@ -74,16 +74,16 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 ### Engine
 
 - [x] Open saved profiles, with connection reuse inside each tile
-- [ ] Connection manager: multiple simultaneous connections, open-connection cap, idle close
+- [x] Connection manager: multiple simultaneous connections, open-connection cap, idle close
 - [x] Sessions pinned to one connection, with state reset on close
-- [ ] Long-lived sessions for console tabs, with explicit transactions
+- [x] Long-lived sessions for console tabs, with explicit transactions
 - [x] Executor with `context` cancel and timeouts
 - [ ] Encrypted result spool: size cap, random page reads, delete on close, sweep at startup
 - [ ] Drain into the spool, then cancel at the cap and report truncation
 - [ ] Binary page format in `internal/wire`, with fuzz tests
-- [ ] Metadata cache with lazy loading, TTL, and invalidation on DDL
+- [x] Metadata cache with lazy loading, TTL, and invalidation on DDL
 - [x] History with redaction and a pruning function
-- [ ] Run history pruning on a retention setting, and add a per-connection off switch
+- [x] Run history pruning on a retention setting, and add a per-connection off switch
 - [x] Audit log with a hash chain
 
 ### SQL language support
@@ -94,8 +94,9 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Statement splitter
 - [x] Default-deny statement classifier, with corpus and fuzz tests
 - [x] Statement redaction for `PASSWORD '...'` and similar
-- [ ] Clause tracker and alias, CTE, and subquery scope resolution
-- [ ] Ranked completion from the metadata cache, with keywords and functions from the live server
+- [x] Clause tracker and alias, CTE, and subquery scope resolution
+- [x] Ranked completion from the metadata cache, with a static list of keywords and functions
+- [ ] Read keywords and functions from the live server
 - [ ] On-demand server-side validation: protocol `Parse` for PostgreSQL, `PREPARE` for MySQL
 
 ### PostgreSQL tile
@@ -108,12 +109,13 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Streaming execution with `ResultReader` in text format
 - [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
 - [ ] Add databases and functions to the tree
-- [ ] Browse with keyset pagination, filter AST, sort, and estimated count
-- [ ] Edit plan and apply with guarded updates, and editable detection from result metadata
-- [ ] Explain as text and JSON
+- [x] Browse with keyset pagination, filter AST, sort, and estimated count
+- [x] Edit plan and apply with guarded updates
+- [ ] Editable detection from result metadata
+- [x] Explain as text and JSON
 - [x] Server read-only transactions
 - [x] Pass the current `tiletest` (versions in the conformance run)
-- [ ] Pass `tiletest` with browse and plan purity
+- [x] Pass `tiletest` with browse and plan purity
 
 ### MySQL and MariaDB tile
 
@@ -126,12 +128,12 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Streaming execution with `sql.RawBytes`
 - [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
 - [ ] Add routines to the tree
-- [ ] Browse with keyset pagination, filter AST, sort, and estimated count
-- [ ] Edit plan and apply with guarded updates and `clientFoundRows=true`
-- [ ] Explain as text and JSON
+- [x] Browse with keyset pagination, filter AST, sort, and estimated count
+- [x] Edit plan and apply with guarded updates and `clientFoundRows=true`
+- [x] Explain as text and JSON
 - [x] Server-enforced read-only (`SET SESSION TRANSACTION READ ONLY`)
 - [x] Pass the current `tiletest` (versions in the conformance run)
-- [ ] Pass `tiletest` with browse and plan purity
+- [x] Pass `tiletest` with browse and plan purity
 
 ### Safety
 
@@ -140,19 +142,20 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Type-to-confirm on connections tagged production
 - [x] Read-only connections
 - [x] Verified TLS by default on new profiles
-- [ ] Warn when a profile uses a weak TLS mode
+- [x] Warn when a profile uses a weak TLS mode
 
 ### CLI and TUI
 
 - [x] Subcommands: `tess connect`, `tess query`, `tess history`, `tess audit verify`, profile management
-- [ ] Subcommands: `tess tui`, `tess serve`
+- [x] Subcommand: `tess tui`
+- [ ] Subcommand: `tess serve`
 - [x] `tess query` output as table, CSV, and JSON, safe in pipes and scripts
-- [ ] Lip Gloss theme generated from the shared tokens, with `NO_COLOR` and color fallback
-- [ ] TUI layout: tree, editor, grid, status line, environment banner
-- [ ] TUI editor with tabs, autocomplete, and cancel
-- [ ] TUI grid with browse, sort, filter, and inline edit with preview
-- [ ] TUI connection forms rendered from `Form`
-- [ ] Shared action registry and keyboard map from section 12
+- [x] Lip Gloss theme generated from the shared tokens, with `NO_COLOR` and color fallback
+- [x] TUI layout: tree, editor, grid, status line, environment banner
+- [x] TUI editor with tabs, autocomplete, and cancel
+- [x] TUI grid with browse, sort, filter, and inline edit with preview
+- [x] TUI connection forms rendered from `Form`
+- [x] Shared action registry and keyboard map from section 12
 
 ### Web server
 
@@ -227,7 +230,8 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 ### Workspace
 
 - [ ] Saved queries
-- [ ] Command palette in web and TUI
+- [x] Command palette in the TUI
+- [ ] Command palette in the web app
 - [ ] TUI forms for all `Actions`
 - [ ] Keyboard-only grid operation that follows the ARIA grid pattern
 
@@ -260,6 +264,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Signed SLSA provenance through GitHub attestations (Sigstore keyless)
 - [x] Release job on version tags on `main`, for Linux, macOS, and Windows on amd64 and arm64
 - [x] Release 0.1.0 (CLI only)
+- [ ] Release 0.2.0 (CLI and TUI)
 - [ ] Include the web app in releases, once `tess serve` exists
 - [ ] Nightly benchmarks on fixed hardware, with published results
 - [ ] User docs and a threat model page

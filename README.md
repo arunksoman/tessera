@@ -2,7 +2,7 @@
 
 An open-source database client with a plugin for each database. A tessera is a single tile in a mosaic: each plugin is a tile, and together they form one picture of your data.
 
-**Status: early development.** The `tess` command-line client works with PostgreSQL, MySQL, and MariaDB. The terminal UI and web app are not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
+**Status: early development.** The `tess` command-line client and terminal UI work with PostgreSQL, MySQL, and MariaDB. The web app is not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
 
 ## Install
 
@@ -10,7 +10,7 @@ Download an archive for your platform from [Releases](https://github.com/arunkso
 
 ```sh
 sha256sum --check --ignore-missing sha256sums.txt
-gh attestation verify tess_0.1.0_linux_amd64.tar.gz --repo arunksoman/tessera
+gh attestation verify tess_0.2.0_linux_amd64.tar.gz --repo arunksoman/tessera
 ```
 
 ## Build
@@ -34,7 +34,34 @@ tess query -c app -f csv "SELECT * FROM orders" > orders.csv
 tess history -c app
 ```
 
-New remote profiles verify the server's TLS identity unless you choose a weaker mode with `--tls`.
+New remote profiles verify the server's TLS identity unless you choose a weaker mode with `--tls`, which prints a warning.
+
+### Terminal UI
+
+```sh
+tess tui          # pick a connection, or create one in a form
+tess tui app      # open a saved profile
+```
+
+Three panes: an object tree, a SQL editor, and a result grid. Browse a table from the tree, sort and filter on the server, and edit cells. Edits stay pending until you preview them with `Ctrl+S`, then apply them in one transaction. If someone else changed a record since you read it, nothing is applied and you see a conflict.
+
+| Keys | Action |
+|---|---|
+| `F5` or `Ctrl+Enter` | Run the statement at the cursor (`F6` runs the whole script) |
+| `Esc` | Cancel a running query on the server |
+| `Tab` | Complete at the cursor |
+| `F7`, `F8` | Explain as text, as JSON |
+| `Alt+1`, `Alt+2`, `Alt+3`, `Shift+Tab` | Focus the tree, editor, grid, next pane |
+| `Alt+T`, `Alt+W`, `Alt+]`, `Alt+[` | New, close, next, previous tab |
+| `Alt+C` | Switch connection |
+| `Ctrl+R` | Statement history |
+| `Ctrl+K`, `F1` | Command palette, help |
+| `F9` | Theme: system, light, dark (remembered) |
+| `Ctrl+Q` | Quit |
+
+In the grid: `Enter` edits, `v` shows a whole value, `s` sorts, `f` filters, `c` clears filters, and `u` undoes an edit. `NO_COLOR` is respected. `Ctrl+Enter` needs a terminal that can report it, so `F5` always works.
+
+Results in the grid stop at 50,000 rows or 64 MiB, then the query is cancelled and the grid says it was truncated. In an open PostgreSQL transaction that cancel aborts the transaction. Use `tess query` to stream larger results.
 
 ### Safety
 
@@ -85,8 +112,8 @@ printf 'tessera_dev\n' | tess profile add local-pg --tile postgres --host 127.0.
 Push an annotated version tag on a commit in `main`. The tag message becomes the release notes.
 
 ```sh
-git tag -a v0.1.0 -m "Release notes here"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Release notes here"
+git push origin v0.2.0
 ```
 
 The [release workflow](.github/workflows/release.yml) runs CI, checks the build is reproducible, then publishes archives, checksums, an SBOM, and signed provenance. Web and desktop apps are not built yet: when `tess serve` exists, the web app ships inside the same binary.

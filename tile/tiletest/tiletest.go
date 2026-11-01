@@ -44,6 +44,15 @@ func Run(t *testing.T, h Harness) {
 	t.Run("TreePaging", func(t *testing.T) { testTreePaging(t, h) })
 	t.Run("Describe", func(t *testing.T) { testDescribe(t, h) })
 	t.Run("HostileIdentifiers", func(t *testing.T) { testHostile(t, h) })
+	t.Run("BrowseLayout", func(t *testing.T) { testBrowseLayout(t, h) })
+	t.Run("BrowsePaging", func(t *testing.T) { testBrowsePaging(t, h) })
+	t.Run("BrowseFilter", func(t *testing.T) { testBrowseFilter(t, h) })
+	t.Run("BrowseKeyless", func(t *testing.T) { testBrowseKeyless(t, h) })
+	t.Run("BrowseHostile", func(t *testing.T) { testBrowseHostile(t, h) })
+	t.Run("PlanPurity", func(t *testing.T) { testPlanPurity(t, h) })
+	t.Run("PlanGuards", func(t *testing.T) { testPlanGuards(t, h) })
+	t.Run("Explain", func(t *testing.T) { testExplain(t, h) })
+	t.Run("SessionPing", func(t *testing.T) { testSessionPing(t, h) })
 }
 
 func session(t *testing.T, c tile.Conn, opt tile.SessionOptions) tile.Session {

@@ -67,6 +67,13 @@ func TestClassify(t *testing.T) {
 		{"leading paren", Postgres, "(SELECT 1)", "SELECT", tile.RiskNone, true},
 		{"read-only cte", Postgres, "WITH a AS (SELECT 1) SELECT * FROM a", "WITH", tile.RiskNone, true},
 
+		{"begin", Postgres, "BEGIN", "BEGIN", tile.RiskNone, true},
+		{"start transaction", MySQL, "start transaction", "START", tile.RiskNone, true},
+		{"commit", Postgres, "COMMIT WORK", "COMMIT", tile.RiskNone, true},
+		{"rollback", MySQL, "ROLLBACK", "ROLLBACK", tile.RiskNone, true},
+		{"begin read write is not plain control", Postgres, "BEGIN READ WRITE", "BEGIN", tile.RiskWrite, false},
+		{"mariadb compound statement", MySQL, "BEGIN NOT ATOMIC DROP TABLE t; END", "BEGIN", tile.RiskWrite, false},
+		{"start replica is a write", MySQL, "START REPLICA", "START", tile.RiskWrite, false},
 		{"insert", Postgres, "INSERT INTO t VALUES (1)", "INSERT", tile.RiskWrite, false},
 		{"update with where", Postgres, "UPDATE t SET a=1 WHERE id=2", "UPDATE", tile.RiskWrite, false},
 		{"delete with where", MySQL, "DELETE FROM t WHERE id=2", "DELETE", tile.RiskWrite, false},

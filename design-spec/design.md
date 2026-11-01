@@ -568,14 +568,16 @@ tessera/
 | `golang.org/x/time/rate` | Login rate limiting. Small, Go team. | Hand-written limiter |
 | `github.com/jackc/pgx/v5` | The standard PostgreSQL driver. Exposes `pgconn` for raw streaming, cancel, COPY, and GSS hooks. | `lib/pq`, maintenance mode |
 | `github.com/go-sql-driver/mysql` | The standard MySQL driver. TLS, Unix sockets, custom dial, custom auth plugins. | Writing a protocol client |
-| `charm.land/bubbletea/v2`, `bubbles/v2`, `lipgloss/v2` | Required by the brief. Note the v2 module path and API changes (`KeyPressMsg`, no `AdaptiveColor`). | |
-| `charm.land/huh/v2` † | TUI forms rendered from `Form`. Confirm the v2 path when adopting, and drop it if `bubbles` inputs suffice. | |
+| `charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, `charm.land/lipgloss/v2` | Required by the brief. Note the v2 module path and API changes (`KeyPressMsg`, no `AdaptiveColor`). | |
+| `golang.org/x/term` | Reads passwords without echo, and detects a terminal, in the CLI. Maintained by the Go team. | Per-OS console code |
 | `modernc.org/sqlite` | Pure-Go SQLite for state, supporting `CGO_ENABLED=0` on all targets, and later the SQLite tile. It is the largest binary contributor, so measure it in M0. | `mattn/go-sqlite3` (cgo); `bbolt` (no query or search for history) |
 | `github.com/zalando/go-keyring` | OS keychain on all three platforms. Small. | Per-OS code |
 | `github.com/BurntSushi/toml` | Human-edited config. No transitive dependencies. | YAML libraries, larger and riskier |
 | `github.com/coreos/go-oidc/v3` + `x/oauth2` | OIDC login. Token validation must not be hand-written. Arrives with SSO in v1. | |
 
 **Deliberately excluded from the brief's suggestions:**
+
+- **`huh`:** `bubbles` inputs were enough to render `Form` as a TUI form, so it was dropped.
 
 - **Glamour:** brings a Markdown and syntax-highlighting tree for showing help text. Plain styled text is enough.
 - **Gum:** a shell tool, not a library.

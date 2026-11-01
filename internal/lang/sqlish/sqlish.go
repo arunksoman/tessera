@@ -50,6 +50,9 @@ type token struct {
 	start, end int
 	upper      string // tokWord only
 	paren      int    // depth of the enclosing parens
+	open       bool   // "("
+	close      bool   // ")"
+	comma      bool
 }
 
 // lex scans text. Comments produce no tokens, except executable comments, whose bodies
@@ -125,6 +128,7 @@ func (d Dialect) lex(s string) []token {
 			i++
 		case c == '(':
 			emit(tokOther, i, i+1)
+			toks[len(toks)-1].open = true
 			depth++
 			i++
 		case c == ')':
@@ -132,6 +136,11 @@ func (d Dialect) lex(s string) []token {
 				depth--
 			}
 			emit(tokOther, i, i+1)
+			toks[len(toks)-1].close = true
+			i++
+		case c == ',':
+			emit(tokOther, i, i+1)
+			toks[len(toks)-1].comma = true
 			i++
 		default:
 			emit(tokOther, i, i+1)
@@ -325,7 +334,7 @@ func classifyOne(toks []token) tile.Classification {
 			return c
 		}
 	}
-	if !slices.Contains(readVerbs, verb) {
+	if !slices.Contains(readVerbs, verb) && !isTxControl(toks) {
 		c.Risk, c.Reason = tile.RiskWrite, verb+" is not known to be read-only"
 	}
 
@@ -370,6 +379,28 @@ func classifyOne(toks []token) tile.Classification {
 	c.ReadOnly = c.Risk == tile.RiskNone
 	return c
 }
+
+// isTxControl recognises only the plain forms, by allowing no other word. MariaDB's
+// BEGIN NOT ATOMIC and MySQL's START REPLICA begin with the same verbs and do real work.
+func isTxControl(toks []token) bool {
+	if len(toks) == 0 || toks[0].kind != tokWord {
+		return false
+	}
+	switch toks[0].upper {
+	case "BEGIN", "COMMIT", "END", "ROLLBACK":
+	case "START":
+		if len(toks) < 2 || toks[1].upper != "TRANSACTION" {
+			return false
+		}
+	default:
+		return false
+	}
+	return !slices.ContainsFunc(toks[1:], func(t token) bool {
+		return t.kind != tokWord || !slices.Contains(txWords, t.upper)
+	})
+}
+
+var txWords = []string{"TRANSACTION", "WORK", "AND", "NO", "CHAIN"}
 
 func raise(c *tile.Classification, r tile.Risk, reason string) {
 	if r > c.Risk || c.Reason == "" {

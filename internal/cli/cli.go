@@ -20,6 +20,7 @@ import (
 	"github.com/arunksoman/tessera/internal/ioformat"
 	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/store"
+	"github.com/arunksoman/tessera/internal/tui"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -27,10 +28,11 @@ const usage = `tess: a universal database client
 
 Usage:
   tess profile add NAME --tile postgres|mysql [--host H] [--port N] [--user U] [--database D]
-                        [--tls MODE] [--env production] [--read-only] [--password-stdin]
+                        [--tls MODE] [--env production] [--read-only] [--no-history] [--password-stdin]
   tess profile list
   tess profile rm NAME
   tess connect NAME
+  tess tui [NAME]
   tess query -c NAME [-f table|csv|json] [--yes] [--raw] [--timeout 30s] [SQL]
   tess history -c NAME [-n 20]
   tess audit verify
@@ -77,6 +79,8 @@ func (a *App) Run(args []string) int {
 		err = a.history(args[1:])
 	case "audit":
 		err = a.audit(args[1:])
+	case "tui":
+		err = a.tui(args[1:])
 	default:
 		err = usageErr("unknown command %q", args[0])
 	}
@@ -214,6 +218,7 @@ func (a *App) profileAdd(args []string) error {
 	tlsMode := fs.String("tls", "", "sslmode (PostgreSQL) or TLS mode (MySQL)")
 	envTag := fs.String("env", "", `environment tag; "production" adds confirmations`)
 	readOnly := fs.Bool("read-only", false, "refuse writes")
+	noHistory := fs.Bool("no-history", false, "record no statement history; audit still records writes")
 	pwStdin := fs.Bool("password-stdin", false, "read the password from standard input")
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -256,7 +261,14 @@ func (a *App) profileAdd(args []string) error {
 			return err
 		}
 	}
-	return st.SaveProfile(store.Profile{Name: rest[0], Tile: *tileID, Env: *envTag, ReadOnly: *readOnly, Values: values})
+	p := store.Profile{Name: rest[0], Tile: *tileID, Env: *envTag, ReadOnly: *readOnly, NoHistory: *noHistory, Values: values}
+	if err := st.SaveProfile(p); err != nil {
+		return err
+	}
+	for _, w := range engine.New(st, vault, actor(), a.Tiles...).Warnings(p) {
+		fmt.Fprintf(a.Stderr, "warning: %s\n", w)
+	}
+	return nil
 }
 
 // readSecret reads one line, without echo on a terminal.
@@ -445,6 +457,28 @@ func (a *App) history(args []string) error {
 		fmt.Fprintf(a.Stdout, "%s\t%s\t%dms\t%s\n", e.At.Format(time.DateTime), status, e.ElapsedMS, strings.Join(strings.Fields(e.Statement), " "))
 	}
 	return nil
+}
+
+func (a *App) tui(args []string) error {
+	if len(args) > 1 {
+		return usageErr("tui takes at most one profile name")
+	}
+	if !a.TTY {
+		return errors.New("tui needs a terminal: use tess query in scripts")
+	}
+	st, vault, err := a.openStore()
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	profile := ""
+	if len(args) == 1 {
+		profile = args[0]
+		if _, err := st.Profile(profile); err != nil {
+			return err
+		}
+	}
+	return tui.Run(engine.New(st, vault, actor(), a.Tiles...), profile)
 }
 
 func (a *App) audit(args []string) error {

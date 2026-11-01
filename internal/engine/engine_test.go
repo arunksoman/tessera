@@ -15,12 +15,17 @@ import (
 
 // fakeTile records what reaches the "database".
 type fakeTile struct {
-	executed     []string
-	readOnly     []bool
-	secret       string
-	dialled      bool
-	failOn       string
-	closedStream int
+	executed      []string
+	readOnly      []bool
+	secret        string
+	dialled       bool
+	failOn        string
+	closedStream  int
+	closedSession int
+	closedConn    int
+	opens         int
+	pingErr       error
+	affected      *int64
 }
 
 func (f *fakeTile) Manifest() tile.Manifest { return tile.Manifest{ID: "fake", Name: "Fake"} }
@@ -31,6 +36,7 @@ func (f *fakeTile) Open(ctx context.Context, _ tile.ConnConfig, env tile.Env) (t
 		return nil, err
 	}
 	f.secret = string(pw)
+	f.opens++
 	return fakeConn{f}, nil
 }
 
@@ -38,7 +44,7 @@ type fakeConn struct{ f *fakeTile }
 
 func (fakeConn) Capabilities() tile.Capabilities { return tile.Capabilities{} }
 func (fakeConn) Ping(context.Context) error      { return nil }
-func (fakeConn) Close() error                    { return nil }
+func (c fakeConn) Close() error                  { c.f.closedConn++; return nil }
 func (fakeConn) Tree() tile.ObjectTree           { return nil }
 func (fakeConn) Language() tile.Language         { return sqlish.Postgres.Language() }
 func (c fakeConn) Session(_ context.Context, opt tile.SessionOptions) (tile.Session, error) {
@@ -48,7 +54,8 @@ func (c fakeConn) Session(_ context.Context, opt tile.SessionOptions) (tile.Sess
 
 type fakeSession struct{ f *fakeTile }
 
-func (fakeSession) Close() error { return nil }
+func (s fakeSession) Close() error               { s.f.closedSession++; return nil }
+func (s fakeSession) Ping(context.Context) error { return s.f.pingErr }
 func (s fakeSession) Execute(_ context.Context, req tile.Request) (tile.ResultStream, error) {
 	s.f.executed = append(s.f.executed, req.Text)
 	if s.f.failOn != "" && strings.Contains(req.Text, s.f.failOn) {
@@ -71,7 +78,11 @@ func (s *fakeStream) Next(context.Context) (tile.Frame, error) {
 	case 2:
 		return tile.Frame{Batch: &tile.Batch{Rows: 2, Cells: []tile.Value{tile.Text("1"), tile.Text("2")}}}, nil
 	case 3:
-		return tile.Frame{Done: &tile.ResultSummary{}}, nil
+		sum := &tile.ResultSummary{}
+		if s.f.affected != nil {
+			sum.HasAffected, sum.RowsAffected = true, *s.f.affected
+		}
+		return tile.Frame{Done: sum}, nil
 	}
 	return tile.Frame{}, io.EOF
 }

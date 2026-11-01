@@ -149,3 +149,26 @@ func TestConfirmerRules(t *testing.T) {
 		t.Error("--yes must confirm for scripts")
 	}
 }
+
+func TestTUINeedsATerminal(t *testing.T) {
+	env(t)
+	r := tess("", "tui")
+	if r.code != exitError || !strings.Contains(r.err, "needs a terminal") {
+		t.Fatalf("%+v", r)
+	}
+	if r := tess("", "tui", "a", "b"); r.code != exitUsage {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestProfileAddWarnsOnWeakTLSAndKeepsNoHistory(t *testing.T) {
+	env(t)
+	r := tess("", "profile", "add", "weak", "--tile", "postgres", "--host", "h", "--tls", "disable", "--no-history")
+	if r.code != 0 || !strings.Contains(r.err, "plaintext") {
+		t.Fatalf("%+v", r)
+	}
+	r = tess("", "profile", "add", "strong", "--tile", "postgres", "--host", "h")
+	if r.code != 0 || strings.Contains(r.err, "warning") {
+		t.Fatalf("%+v", r)
+	}
+}

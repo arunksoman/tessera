@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/arunksoman/tessera/internal/lang/sqlish"
+	"github.com/arunksoman/tessera/internal/tiles/sqlgen"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -427,6 +428,118 @@ func (t tree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.ObjectDeta
 		d.Sections = append(d.Sections, section(part.title, rows, fd))
 	}
 	return d, nil
+}
+
+// Ping fails once the session is closed or the server has gone away.
+func (s *session) Ping(ctx context.Context) error {
+	if s.pg == nil {
+		return errors.New("postgres: session closed")
+	}
+	return s.pg.Ping(ctx)
+}
+
+var dialect = sqlgen.Dialect{
+	Quote: func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` },
+	Mark:  func(i int) string { return "$" + strconv.Itoa(i) },
+	Text:  func(c string) string { return c + "::text" },
+	Like:  "ILIKE",
+	Begin: "BEGIN",
+}
+
+const (
+	estimateSQL = `SELECT c.reltuples::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2`
+	// One row per column of each usable unique index, primary key first.
+	keysSQL = `SELECT x.indexrelid::text, a.attname, a.attnotnull::text
+		FROM pg_index x
+		JOIN pg_class c ON c.oid = x.indrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		CROSS JOIN LATERAL unnest(x.indkey) WITH ORDINALITY k(attnum, ord)
+		JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = k.attnum
+		WHERE n.nspname = $1 AND c.relname = $2
+			AND x.indisunique AND x.indisvalid AND x.indpred IS NULL AND x.indexprs IS NULL
+		ORDER BY x.indisprimary DESC, x.indexrelid, k.ord`
+)
+
+func (c *conn) Layout(ctx context.Context, ref tile.ObjectRef) (tile.Layout, error) {
+	if len(ref.Path) != 2 {
+		return tile.Layout{}, fmt.Errorf("postgres: cannot browse %v", ref.Path)
+	}
+	schema, name := ref.Path[0].Name, ref.Path[1].Name
+	cols, _, err := c.query(ctx, columnsSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	if len(cols) == 0 {
+		return tile.Layout{}, fmt.Errorf("postgres: %s.%s not found", schema, name)
+	}
+	l := tile.Layout{Estimate: -1}
+	for _, r := range cols {
+		l.Fields = append(l.Fields, tile.Field{Name: string(r[0]), NativeType: string(r[1])})
+	}
+	rows, _, err := c.query(ctx, keysSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	l.Key = firstUsableKey(rows)
+	if len(l.Key) == 0 {
+		l.Note = "no primary key or unique not-null key"
+	}
+	est, _, err := c.query(ctx, estimateSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	if len(est) == 1 {
+		// A table never analyzed reports -1 from PostgreSQL 14 on.
+		if n, err := strconv.ParseInt(string(est[0][0]), 10, 64); err == nil {
+			l.Estimate = n
+		}
+	}
+	return l, nil
+}
+
+// firstUsableKey takes rows of (index, column, not null) and returns the first index whose
+// columns are all NOT NULL, since a nullable unique column does not identify one record.
+func firstUsableKey(rows [][][]byte) []string {
+	for i := 0; i < len(rows); {
+		j, usable := i, true
+		var key []string
+		for ; j < len(rows) && string(rows[j][0]) == string(rows[i][0]); j++ {
+			key = append(key, string(rows[j][1]))
+			usable = usable && string(rows[j][2]) == "true"
+		}
+		if usable {
+			return key
+		}
+		i = j
+	}
+	return nil
+}
+
+func (c *conn) BrowseRequest(ref tile.ObjectRef, l tile.Layout, q tile.BrowseQuery) (tile.Request, error) {
+	return dialect.Select(ref, l, q)
+}
+
+func (c *conn) Plan(ref tile.ObjectRef, l tile.Layout, cs tile.ChangeSet) (tile.Plan, error) {
+	return dialect.Plan(ref, l, cs)
+}
+
+func (c *conn) ExplainRequest(stmt string, format tile.ExplainFormat) tile.Request {
+	if format == tile.ExplainJSON {
+		return tile.Request{Text: "EXPLAIN (FORMAT JSON) " + stmt}
+	}
+	return tile.Request{Text: "EXPLAIN " + stmt}
+}
+
+// ConfigWarnings names TLS modes that can talk to the wrong server or in plaintext.
+func (Tile) ConfigWarnings(cfg tile.ConnConfig) []string {
+	switch cfg.Values["sslmode"] {
+	case "disable", "allow", "prefer":
+		return []string{"TLS mode " + cfg.Values["sslmode"] + " can send data and passwords in plaintext"}
+	case "require":
+		return []string{"TLS mode require encrypts but does not verify the server's identity"}
+	}
+	return nil
 }
 
 func section(title string, rows [][][]byte, fd []pgconn.FieldDescription) tile.DetailSection {
