@@ -264,7 +264,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Signed SLSA provenance through GitHub attestations (Sigstore keyless)
 - [x] Release job on version tags on `main`, for Linux, macOS, and Windows on amd64 and arm64
 - [x] Release 0.1.0 (CLI only)
-- [ ] Release 0.2.0 (CLI and TUI)
+- [x] Release 0.2.0 (CLI and TUI)
 - [ ] Include the web app in releases, once `tess serve` exists
 - [ ] Nightly benchmarks on fixed hardware, with published results
 - [ ] User docs and a threat model page
