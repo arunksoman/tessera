@@ -39,15 +39,52 @@ func Dir() (string, error) {
 
 // Profile is a saved connection. Secrets live in the vault, never here.
 type Profile struct {
-	Name     string            `toml:"-"`
-	Tile     string            `toml:"tile"`
-	Env      string            `toml:"env,omitempty"` // "production" raises confirmations
-	ReadOnly bool              `toml:"read_only,omitempty"`
-	Values   map[string]string `toml:"values,omitempty"`
+	Name     string `toml:"-"`
+	Tile     string `toml:"tile"`
+	Env      string `toml:"env,omitempty"` // "production" raises confirmations
+	ReadOnly bool   `toml:"read_only,omitempty"`
+	// NoHistory stops recording statements for this profile. Audit still records writes.
+	NoHistory bool              `toml:"no_history,omitempty"`
+	Values    map[string]string `toml:"values,omitempty"`
 }
 
 type config struct {
+	Settings
 	Profiles map[string]Profile `toml:"profiles"`
+}
+
+// Settings are app-wide preferences.
+type Settings struct {
+	Theme       string `toml:"theme,omitempty"`        // light, dark, or empty to follow the system
+	HistoryKeep int    `toml:"history_keep,omitempty"` // newest entries kept, 0 for the default
+}
+
+// DefaultHistoryKeep applies when no retention setting is saved.
+const DefaultHistoryKeep = 10000
+
+// Settings returns the saved preferences with defaults filled in.
+func (s *Store) Settings() (Settings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.loadConfig()
+	if err != nil {
+		return Settings{}, err
+	}
+	if c.HistoryKeep == 0 {
+		c.HistoryKeep = DefaultHistoryKeep
+	}
+	return c.Settings, nil
+}
+
+func (s *Store) SaveSettings(v Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.loadConfig()
+	if err != nil {
+		return err
+	}
+	c.Settings = v
+	return s.saveConfig(c)
 }
 
 type Store struct {

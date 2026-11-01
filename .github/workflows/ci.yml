@@ -26,6 +26,9 @@ jobs:
       - name: gofmt
         if: runner.os == 'Linux'
         run: test -z "$(gofmt -l .)"
+      - name: Direct dependencies are justified
+        if: runner.os == 'Linux'
+        run: scripts/check-deps.sh
       - run: go vet ./...
       - run: go vet -tags integration ./...
       - run: go test -count=1 ./...
@@ -39,7 +42,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: docker compose --profile matrix up -d --wait --build
-      - run: go test -tags integration -count=1 -timeout 10m ./internal/tiles/... ./internal/cli/...
+      - run: go test -tags integration -count=1 -timeout 10m ./internal/tiles/... ./internal/cli/... ./internal/tui/...
         env:
           TESSERA_TEST_MATRIX: "1"
       - if: failure()

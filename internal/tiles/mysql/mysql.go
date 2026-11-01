@@ -19,6 +19,7 @@ import (
 	driver "github.com/go-sql-driver/mysql"
 
 	"github.com/arunksoman/tessera/internal/lang/sqlish"
+	"github.com/arunksoman/tessera/internal/tiles/sqlgen"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -504,6 +505,117 @@ func (t tree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.ObjectDeta
 		d.Sections = append(d.Sections, s)
 	}
 	return d, nil
+}
+
+// Ping fails once the session is closed or the server has gone away.
+func (s *session) Ping(ctx context.Context) error {
+	if s.sc == nil {
+		return errors.New("mysql: session closed")
+	}
+	return s.sc.PingContext(ctx)
+}
+
+var dialect = sqlgen.Dialect{
+	Quote: func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" },
+	Mark:  func(int) string { return "?" },
+	Text:  func(c string) string { return "CAST(" + c + " AS CHAR)" },
+	Like:  "LIKE",
+	Begin: "START TRANSACTION",
+}
+
+const (
+	estimateSQL = `SELECT TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`
+	// Index columns, primary key first, with whether each is NOT NULL.
+	keysSQL = `SELECT s.INDEX_NAME, s.COLUMN_NAME, c.IS_NULLABLE
+		FROM information_schema.STATISTICS s
+		JOIN information_schema.COLUMNS c
+			ON c.TABLE_SCHEMA = s.TABLE_SCHEMA AND c.TABLE_NAME = s.TABLE_NAME AND c.COLUMN_NAME = s.COLUMN_NAME
+		WHERE s.TABLE_SCHEMA = ? AND s.TABLE_NAME = ? AND s.NON_UNIQUE = 0 AND s.SUB_PART IS NULL
+		ORDER BY s.INDEX_NAME <> 'PRIMARY', s.INDEX_NAME, s.SEQ_IN_INDEX`
+)
+
+func (c *conn) Layout(ctx context.Context, ref tile.ObjectRef) (tile.Layout, error) {
+	if len(ref.Path) != 2 {
+		return tile.Layout{}, fmt.Errorf("mysql: cannot browse %v", ref.Path)
+	}
+	schema, name := ref.Path[0].Name, ref.Path[1].Name
+	t := tree{c}
+	cols, err := t.section(ctx, "", columnsSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	if len(cols.Rows) == 0 {
+		return tile.Layout{}, fmt.Errorf("mysql: %s.%s not found", schema, name)
+	}
+	l := tile.Layout{Estimate: -1}
+	for _, r := range cols.Rows {
+		l.Fields = append(l.Fields, tile.Field{Name: string(r[0].Raw), NativeType: string(r[1].Raw)})
+	}
+	keys, err := t.section(ctx, "", keysSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	l.Key = firstUsableKey(keys.Rows)
+	if len(l.Key) == 0 {
+		l.Note = "no primary key or unique not-null key"
+	}
+	est, err := t.section(ctx, "", estimateSQL, schema, name)
+	if err != nil {
+		return tile.Layout{}, err
+	}
+	if len(est.Rows) == 1 {
+		if n, err := strconv.ParseInt(string(est.Rows[0][0].Raw), 10, 64); err == nil {
+			l.Estimate = n
+		}
+	}
+	return l, nil
+}
+
+// firstUsableKey takes rows of (index, column, nullable) and returns the first index whose
+// columns are all NOT NULL, since a nullable unique column does not identify one record.
+func firstUsableKey(rows [][]tile.Value) []string {
+	for i := 0; i < len(rows); {
+		j, usable := i, true
+		var key []string
+		for ; j < len(rows) && string(rows[j][0].Raw) == string(rows[i][0].Raw); j++ {
+			key = append(key, string(rows[j][1].Raw))
+			usable = usable && string(rows[j][2].Raw) == "NO"
+		}
+		if usable {
+			return key
+		}
+		i = j
+	}
+	return nil
+}
+
+func (c *conn) BrowseRequest(ref tile.ObjectRef, l tile.Layout, q tile.BrowseQuery) (tile.Request, error) {
+	return dialect.Select(ref, l, q)
+}
+
+func (c *conn) Plan(ref tile.ObjectRef, l tile.Layout, cs tile.ChangeSet) (tile.Plan, error) {
+	return dialect.Plan(ref, l, cs)
+}
+
+func (c *conn) ExplainRequest(stmt string, format tile.ExplainFormat) tile.Request {
+	if format == tile.ExplainJSON {
+		return tile.Request{Text: "EXPLAIN FORMAT=JSON " + stmt}
+	}
+	return tile.Request{Text: "EXPLAIN " + stmt}
+}
+
+// ConfigWarnings names TLS modes that can talk to the wrong server or in plaintext.
+func (Tile) ConfigWarnings(cfg tile.ConnConfig) []string {
+	if cfg.Values["socket"] != "" {
+		return nil
+	}
+	switch cfg.Values["tlsmode"] {
+	case "DISABLED", "PREFERRED":
+		return []string{"TLS mode " + cfg.Values["tlsmode"] + " can send data and passwords in plaintext"}
+	case "REQUIRED":
+		return []string{"TLS mode REQUIRED encrypts but does not verify the server's identity"}
+	}
+	return nil
 }
 
 func (t tree) section(ctx context.Context, title, text string, args ...any) (tile.DetailSection, error) {

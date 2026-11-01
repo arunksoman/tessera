@@ -224,6 +224,139 @@ type Classification struct {
 	Reason   string
 }
 
+// Pinger is an optional Session facet: long-lived sessions check they are still alive.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// Browser is an optional Conn facet for paging through one object's records.
+type Browser interface {
+	Layout(ctx context.Context, ref ObjectRef) (Layout, error)
+	// BrowseRequest builds the request for one page. It does no I/O.
+	BrowseRequest(ref ObjectRef, l Layout, q BrowseQuery) (Request, error)
+}
+
+// Layout describes a browsable object.
+type Layout struct {
+	Fields []Field
+	// Key names the fields that identify one record. Empty means records cannot be edited,
+	// and Note says why.
+	Key      []string
+	Note     string
+	Estimate int64 // approximate record count, negative if unknown
+}
+
+type SortKey struct {
+	Field string
+	Desc  bool
+}
+
+type FilterOp string
+
+const (
+	OpEq       FilterOp = "="
+	OpNe       FilterOp = "!="
+	OpLt       FilterOp = "<"
+	OpLe       FilterOp = "<="
+	OpGt       FilterOp = ">"
+	OpGe       FilterOp = ">="
+	OpContains FilterOp = "~"
+	OpNull     FilterOp = "null"
+	OpNotNull  FilterOp = "!null"
+)
+
+// Condition is one term of a typed filter. Conditions are ANDed.
+type Condition struct {
+	Field string
+	Op    FilterOp
+	Value Value
+}
+
+// BrowseQuery selects one page. After is the last record of the previous page, aligned with
+// Layout.Fields. Offset is the number of records already read, used only without a Key.
+type BrowseQuery struct {
+	Sort   []SortKey
+	Filter []Condition
+	After  []Value
+	Offset int64
+	Limit  int
+}
+
+// Editor is an optional Conn facet that turns intended edits into exact steps.
+type Editor interface {
+	// Plan has no side effects.
+	Plan(ref ObjectRef, l Layout, cs ChangeSet) (Plan, error)
+}
+
+// Change sets fields on the record whose Key values match. Old holds the values the user saw
+// for each field in Set, so a record changed by someone else is a conflict, not an overwrite.
+type Change struct {
+	Key []Value // aligned with Layout.Key
+	Old map[string]Value
+	Set map[string]Value
+}
+
+type ChangeSet struct{ Changes []Change }
+
+type Atomicity uint8
+
+const (
+	AtomicAll Atomicity = iota
+	AtomicPerItem
+)
+
+// Plan is what will run. Begin, Commit, and Rollback are empty when not supported.
+type Plan struct {
+	Begin, Commit, Rollback Request
+	Steps                   []PlanStep
+	Atomicity               Atomicity
+}
+
+type PlanStep struct {
+	Request    Request
+	Preview    string // for reading only: values rendered as literals
+	ExpectRows int64
+}
+
+// Explainer is an optional Conn facet. It builds a request that plans stmt without running it.
+type Explainer interface {
+	ExplainRequest(stmt string, format ExplainFormat) Request
+}
+
+type ExplainFormat uint8
+
+const (
+	ExplainText ExplainFormat = iota
+	ExplainJSON
+)
+
+// ConfigWarner is an optional Tile facet that names weak settings in a connection config.
+type ConfigWarner interface {
+	ConfigWarnings(cfg ConnConfig) []string
+}
+
+// Completer is an optional Language facet.
+type Completer interface {
+	// Complete returns ranked candidates for the cursor, a byte offset into text. Prefix is
+	// the text before the cursor that a chosen candidate replaces.
+	Complete(text string, cursor int, cat Catalog) (prefix string, out []Candidate)
+}
+
+// Catalog is what a Completer may ask about the connected server.
+type Catalog interface {
+	// Tables lists tables and views visible to the user, each as a schema and a name.
+	Tables() []ObjectName
+	// Columns lists a table's columns. An empty schema means any schema.
+	Columns(name ObjectName) []string
+}
+
+type ObjectName struct{ Schema, Name string }
+
+type Candidate struct {
+	Text string
+	Kind string // column, table, schema, keyword, function
+}
+
 // Form describes a data-driven form rendered by every front-end.
 type Form struct{ Fields []FormField }
 

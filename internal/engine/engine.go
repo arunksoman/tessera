@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/arunksoman/tessera/internal/meta"
 	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/store"
 	"github.com/arunksoman/tessera/tile"
@@ -18,6 +21,14 @@ var (
 	ErrReadOnly     = errors.New("this connection is read-only")
 	ErrNeedsConfirm = errors.New("this statement needs confirmation")
 	ErrDeclined     = errors.New("declined")
+	// ErrStop is returned by a Sink to end the current statement early. It is not a failure:
+	// the server's work stops, and the script continues with the next statement.
+	ErrStop         = errors.New("stop reading")
+	ErrSessionLost  = errors.New("the connection was lost and the open transaction rolled back")
+	ErrConflict     = errors.New("conflict")
+	ErrPlanChanged  = errors.New("the plan changed after it was previewed")
+	ErrUnsupported  = errors.New("not supported by this connection")
+	ErrTooManyConns = errors.New("too many open connections")
 )
 
 // EnvProduction raises confirmations on writes.
@@ -52,7 +63,13 @@ type Conn struct {
 	e       *Engine
 	profile store.Profile
 	conn    tile.Conn
+	meta    *meta.Cache
 }
+
+const metaTTL = 5 * time.Minute
+
+// ddlVerbs change what the metadata cache holds.
+var ddlVerbs = map[string]bool{"CREATE": true, "ALTER": true, "DROP": true, "RENAME": true}
 
 func (e *Engine) Open(ctx context.Context, profile string) (*Conn, error) {
 	p, err := e.store.Profile(profile)
@@ -70,7 +87,52 @@ func (e *Engine) Open(ctx context.Context, profile string) (*Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %q: %w", p.Name, err)
 	}
-	return &Conn{e: e, profile: p, conn: c}, nil
+	if settings, err := e.store.Settings(); err == nil && settings.HistoryKeep > 0 {
+		e.store.PruneHistory(settings.HistoryKeep) // a failed prune must not stop a connection
+	}
+	var cache *meta.Cache
+	if tree := c.Tree(); tree != nil {
+		cache = meta.New(tree, metaTTL)
+	}
+	return &Conn{e: e, profile: p, conn: c, meta: cache}, nil
+}
+
+// Warnings names weak settings in a profile, such as a TLS mode that allows plaintext.
+func (e *Engine) Warnings(p store.Profile) []string {
+	if w, ok := e.tiles[p.Tile].(tile.ConfigWarner); ok {
+		return w.ConfigWarnings(tile.ConnConfig{Values: p.Values})
+	}
+	return nil
+}
+
+// Store returns the engine's store, for front-ends that manage profiles.
+func (e *Engine) Store() *store.Store { return e.store }
+
+// SetSecret stores one of a profile's secrets in the vault.
+func (e *Engine) SetSecret(profile, name string, value []byte) error {
+	return e.vault.Set(SecretName(profile, name), value)
+}
+
+// MoveSecret keeps a secret when a profile is renamed.
+func (e *Engine) MoveSecret(from, to, name string) error {
+	v, err := e.vault.Get(SecretName(from, name))
+	if err != nil || len(v) == 0 {
+		return err
+	}
+	if err := e.vault.Set(SecretName(to, name), v); err != nil {
+		return err
+	}
+	return e.vault.Delete(SecretName(from, name))
+}
+
+// Tiles returns the registered tiles sorted by ID.
+func (e *Engine) Tiles() []tile.Tile {
+	out := make([]tile.Tile, 0, len(e.tiles))
+	for _, t := range e.tiles {
+		out = append(out, t)
+	}
+	slices.SortFunc(out, func(a, b tile.Tile) int { return strings.Compare(a.Manifest().ID, b.Manifest().ID) })
+	return out
 }
 
 func (c *Conn) Close() error { return c.conn.Close() }
@@ -102,6 +164,19 @@ type Sink func(statement int, f tile.Frame) error
 // Run executes a script. Every statement passes the gate before the first one runs,
 // so a refused script has no partial effect.
 func (c *Conn) Run(ctx context.Context, text string, opt RunOptions, sink Sink) error {
+	stmts, classes, err := c.prepare(text, opt.Confirm)
+	if err != nil || len(stmts) == 0 {
+		return err
+	}
+	sess, err := c.conn.Session(ctx, tile.SessionOptions{ReadOnly: c.profile.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	return c.runAll(ctx, sess, stmts, classes, sink, func(string, tile.Classification) {})
+}
+
+func (c *Conn) prepare(text string, confirm Confirm) ([]string, []tile.Classification, error) {
 	lang := c.conn.Language()
 	spans := lang.Split(text)
 	stmts := make([]string, len(spans))
@@ -109,27 +184,30 @@ func (c *Conn) Run(ctx context.Context, text string, opt RunOptions, sink Sink) 
 	for i, s := range spans {
 		stmts[i] = text[s.Start:s.End]
 		classes[i] = lang.Classify(stmts[i])
-		if err := c.gate(stmts[i], classes[i], opt.Confirm); err != nil {
-			return err
+		if err := c.gate(stmts[i], classes[i], confirm); err != nil {
+			return nil, nil, err
 		}
 	}
-	if len(stmts) == 0 {
-		return nil
-	}
+	return stmts, classes, nil
+}
 
-	sess, err := c.conn.Session(ctx, tile.SessionOptions{ReadOnly: c.profile.ReadOnly})
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
+func (c *Conn) runAll(ctx context.Context, sess tile.Session, stmts []string, classes []tile.Classification, sink Sink, ran func(string, tile.Classification)) error {
+	lang := c.conn.Language()
 	for i, stmt := range stmts {
 		start := time.Now()
 		rows, affected, err := runOne(ctx, sess, stmt, i, sink)
+		if errors.Is(err, ErrStop) {
+			err = nil
+		}
 		if recErr := c.record(lang.Redact(stmt), classes[i], start, rows, affected, err); recErr != nil && err == nil {
 			err = fmt.Errorf("recording statement: %w", recErr)
 		}
 		if err != nil {
 			return err
+		}
+		ran(stmt, classes[i])
+		if !classes[i].ReadOnly && ddlVerbs[classes[i].Verb] && c.meta != nil {
+			c.meta.Invalidate()
 		}
 	}
 	return nil
@@ -153,7 +231,11 @@ func (c *Conn) gate(stmt string, class tile.Classification, confirm Confirm) err
 }
 
 func runOne(ctx context.Context, sess tile.Session, stmt string, index int, sink Sink) (rows, affected int64, err error) {
-	st, err := sess.Execute(ctx, tile.Request{Text: stmt})
+	return execute(ctx, sess, tile.Request{Text: stmt}, sink, index)
+}
+
+func execute(ctx context.Context, sess tile.Session, req tile.Request, sink Sink, index int) (rows, affected int64, err error) {
+	st, err := sess.Execute(ctx, req)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -184,9 +266,12 @@ func (c *Conn) record(redacted string, class tile.Classification, start time.Tim
 	if runErr != nil {
 		msg = runErr.Error()
 	}
-	err := c.e.store.AddHistory(store.HistoryEntry{
-		Profile: c.profile.Name, Statement: redacted, ElapsedMS: time.Since(start).Milliseconds(), Rows: rows + affected, Error: msg,
-	})
+	var err error
+	if !c.profile.NoHistory {
+		err = c.e.store.AddHistory(store.HistoryEntry{
+			Profile: c.profile.Name, Statement: redacted, ElapsedMS: time.Since(start).Milliseconds(), Rows: rows + affected, Error: msg,
+		})
+	}
 	if class.ReadOnly {
 		return err
 	}

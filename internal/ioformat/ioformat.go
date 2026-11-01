@@ -296,3 +296,9 @@ func (t *tableWriter) End() error {
 	_, err := fmt.Fprintf(t.w, "(%d %s)\n", t.rows, noun)
 	return err
 }
+
+// CellText renders a value as text that is safe to show in a terminal.
+func CellText(v tile.Value) string { return cellText(v) }
+
+// Display makes database or server text safe to show in a terminal.
+func Display(s string) string { return display(s) }
