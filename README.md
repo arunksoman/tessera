@@ -63,6 +63,29 @@ In the grid: `Enter` edits, `v` shows a whole value, `s` sorts, `f` filters, `c`
 
 Results in the grid stop at 50,000 rows or 64 MiB, then the query is cancelled and the grid says it was truncated. In an open PostgreSQL transaction that cancel aborts the transaction. Use `tess query` to stream larger results.
 
+### Web server
+
+```sh
+tess serve                               # 127.0.0.1 on a free port
+tess serve --addr 127.0.0.1:8080
+```
+
+`tess serve` opens your default browser on a link with a one-time token, and prints the link too; `--no-browser` only prints it. Opening it signs that browser in, and the link stops working, so restart `tess serve` for a new one.
+
+The web app works like the TUI: add connections from a form, expand the tree, click a table to browse it with sort, filters, and paging, double-click a cell to edit it, then preview the exact SQL and apply it. A SQL tab runs scripts with `Ctrl+Enter` and streams the results; `Esc` or Cancel stops the statement on the server. The same safety rules apply: destructive statements ask first, and production connections ask you to type their name. Alt+T opens a SQL tab, Alt+W closes one.
+
+The web app is embedded into `tess` at build time. Build it before `go build`, which needs Node.js:
+
+```sh
+make            # builds the web app, then tess; `make help` lists the other targets
+```
+
+Without make, run `scripts/build-web.sh`, then `CGO_ENABLED=0 go build -o tess ./cmd/tess`.
+
+A `tess` built without it serves a page that says so.
+
+It listens on loopback by default. Any other address needs TLS (`--tls-cert` and `--tls-key`) or `--behind-proxy` for a TLS-terminating proxy, and the names browsers use must be passed with `--allow-host`. Requests with any other `Host` are refused, which blocks DNS rebinding.
+
 ### Safety
 
 `DROP`, `TRUNCATE`, and `DELETE` or `UPDATE` without `WHERE` need confirmation. Connections created with `--env production` also confirm every write. A script is checked before its first statement runs. In scripts, `--yes` answers confirmations.

@@ -1,0 +1,190 @@
+/* Design tokens from design.md section 12. The theme follows the system until the user picks
+   one, which sets data-theme on <html>. */
+:root {
+	color-scheme: light dark;
+	--plaster: light-dark(#f7f5f0, #14161a);
+	--surface: light-dark(#ffffff, #1c1f25);
+	--surface-2: light-dark(#f1eee8, #22262d);
+	--text: light-dark(#1c1f24, #e7e9ec);
+	--muted: light-dark(#5b616b, #9ba1ab);
+	--border: light-dark(#dedad2, #2e333b);
+	--hover: light-dark(#ece8e0, #262a32);
+	--selected: light-dark(#dfe7f5, #23324a);
+	--lapis: light-dark(#2f5da8, #7aa5eb);
+	--verdigris: light-dark(#0f766e, #4fc4b5);
+	--ochre: light-dark(#8f5606, #e0b04a);
+	--terracotta: light-dark(#a84a24, #e88d67);
+	--porphyry: light-dark(#7b3fa0, #be8fe0);
+	--slate: light-dark(#52606d, #9aa8b5);
+	--danger: light-dark(#b3261e, #f2726a);
+	--warning: light-dark(#8a5a00, #e5b84b);
+	--success: light-dark(#1b7339, #5cc98a);
+	--pending: light-dark(#fff4d6, #3a3018);
+	--on-accent: light-dark(#ffffff, #14161a);
+
+	--font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+	--radius: 4px;
+	--row: 28px;
+}
+:root[data-theme='light'] {
+	color-scheme: light;
+}
+:root[data-theme='dark'] {
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+}
+html,
+body,
+#app {
+	margin: 0;
+	height: 100%;
+}
+body {
+	background: var(--plaster);
+	color: var(--text);
+	font: 13px/1.45 var(--font-ui);
+	overflow: hidden;
+}
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+:focus-visible {
+	outline: 2px solid var(--lapis);
+	outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+	* {
+		transition: none !important;
+	}
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	cursor: pointer;
+	white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+	background: var(--hover);
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.btn.primary {
+	background: var(--lapis);
+	border-color: var(--lapis);
+	color: var(--on-accent);
+}
+.btn.primary:hover:not(:disabled) {
+	background: var(--lapis);
+	filter: brightness(1.1);
+}
+.btn.danger {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: var(--on-accent);
+}
+.btn.ghost {
+	border-color: transparent;
+	background: transparent;
+}
+.btn.ghost:hover:not(:disabled) {
+	background: var(--hover);
+}
+.btn.icon {
+	width: 28px;
+	padding: 0;
+	justify-content: center;
+}
+
+.input {
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	min-width: 0;
+}
+.input:focus {
+	border-color: var(--lapis);
+	outline: none;
+}
+
+.muted {
+	color: var(--muted);
+}
+.mono {
+	font-family: var(--font-mono);
+}
+.error-box {
+	border: 1px solid var(--danger);
+	border-radius: var(--radius);
+	padding: 8px 10px;
+	color: var(--danger);
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+.badge {
+	display: inline-block;
+	padding: 0 5px;
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	line-height: 16px;
+}
+.badge.production {
+	background: var(--danger);
+	color: #fff;
+}
+.badge.staging {
+	background: var(--warning);
+	color: var(--on-accent);
+}
+.badge.development {
+	background: var(--surface-2);
+	color: var(--muted);
+	border: 1px solid var(--border);
+}
+.badge.ro {
+	border: 1px solid var(--border);
+	color: var(--muted);
+}
+
+/* Tile colours by name, so a plugin can pick one without shipping CSS. */
+.tile-lapis {
+	--tile: var(--lapis);
+}
+.tile-verdigris {
+	--tile: var(--verdigris);
+}
+.tile-ochre {
+	--tile: var(--ochre);
+}
+.tile-terracotta {
+	--tile: var(--terracotta);
+}
+.tile-porphyry {
+	--tile: var(--porphyry);
+}
+.tile-slate {
+	--tile: var(--slate);
+}

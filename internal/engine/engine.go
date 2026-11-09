@@ -113,6 +113,17 @@ func (e *Engine) SetSecret(profile, name string, value []byte) error {
 	return e.vault.Set(SecretName(profile, name), value)
 }
 
+// HasSecret reports whether a profile's secret is set, without revealing it.
+func (e *Engine) HasSecret(profile, name string) (bool, error) {
+	v, err := e.vault.Get(SecretName(profile, name))
+	return len(v) > 0, err
+}
+
+// DeleteSecret removes one of a profile's secrets from the vault.
+func (e *Engine) DeleteSecret(profile, name string) error {
+	return e.vault.Delete(SecretName(profile, name))
+}
+
 // MoveSecret keeps a secret when a profile is renamed.
 func (e *Engine) MoveSecret(from, to, name string) error {
 	v, err := e.vault.Get(SecretName(from, name))
@@ -174,6 +185,14 @@ func (c *Conn) Run(ctx context.Context, text string, opt RunOptions, sink Sink) 
 	}
 	defer sess.Close()
 	return c.runAll(ctx, sess, stmts, classes, sink, func(string, tile.Classification) {})
+}
+
+// Prompts lists the statements in a script that need confirmation, without running any.
+// A read-only profile's refusal is returned as an error, since no confirmation lifts it.
+func (c *Conn) Prompts(text string) ([]Prompt, error) {
+	var out []Prompt
+	_, _, err := c.prepare(text, func(p Prompt) bool { out = append(out, p); return true })
+	return out, err
 }
 
 func (c *Conn) prepare(text string, confirm Confirm) ([]string, []tile.Classification, error) {
