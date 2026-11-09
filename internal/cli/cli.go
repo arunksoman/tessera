@@ -33,6 +33,7 @@ Usage:
   tess profile rm NAME
   tess connect NAME
   tess tui [NAME]
+  tess serve [--addr HOST:PORT] [--tls-cert FILE --tls-key FILE] [--behind-proxy] [--allow-host NAME] [--no-browser]
   tess query -c NAME [-f table|csv|json] [--yes] [--raw] [--timeout 30s] [SQL]
   tess history -c NAME [-n 20]
   tess audit verify
@@ -153,6 +154,16 @@ func (a *App) openStore() (*store.Store, *secrets.Vault, error) {
 		return nil, nil, err
 	}
 	return st, vault, nil
+}
+
+// OpenEngine opens the store and vault behind an engine with the app's tiles, for
+// front-ends outside this package such as tess serve. Call close when done.
+func (a *App) OpenEngine() (e *engine.Engine, close func(), err error) {
+	st, vault, err := a.openStore()
+	if err != nil {
+		return nil, nil, err
+	}
+	return engine.New(st, vault, actor(), a.Tiles...), func() { st.Close() }, nil
 }
 
 func actor() string {

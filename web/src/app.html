@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="tess-csp-nonce" content="">
+		<title>Tessera</title>
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<!-- Runs before first paint, so a saved theme never flashes. tess allows it by hash. -->
+		<script>
+			try {
+				var t = localStorage.getItem('tessera-theme');
+				if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+			} catch (e) {}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body>
+		<div id="app">%sveltekit.body%</div>
+	</body>
+</html>

@@ -266,3 +266,38 @@ func TestUnknownProfileAndTile(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestPromptsListsEveryConfirmationWithoutRunning(t *testing.T) {
+	fx := setup(t, store.Profile{})
+	got, err := fx.conn.Prompts("SELECT 1; DROP TABLE a; DELETE FROM b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Statement != "DROP TABLE a" || got[1].Statement != "DELETE FROM b" {
+		t.Fatalf("prompts = %+v", got)
+	}
+	if len(fx.f.executed) != 0 {
+		t.Fatalf("ran %q", fx.f.executed)
+	}
+	if got, err := fx.conn.Prompts("SELECT 1"); err != nil || len(got) != 0 {
+		t.Fatalf("%v %v", got, err)
+	}
+
+	ro := setup(t, store.Profile{ReadOnly: true})
+	if _, err := ro.conn.Prompts("DROP TABLE a"); !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("read-only: %v", err)
+	}
+}
+
+func TestSecretPresenceAndDelete(t *testing.T) {
+	fx := setup(t, store.Profile{})
+	if ok, err := fx.e.HasSecret("dev", "password"); err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	if err := fx.e.DeleteSecret("dev", "password"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := fx.e.HasSecret("dev", "password"); err != nil || ok {
+		t.Fatalf("after delete: %v %v", ok, err)
+	}
+}

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Tessera is a plugin-based database client in Go. The `tess` command-line client and terminal UI exist, for PostgreSQL, MySQL, and MariaDB. The web server and frontend are not built, and `web/spikes/grid` is a throwaway prototype.
+Tessera is a plugin-based database client in Go. The `tess` command-line client, terminal UI, and `tess serve` web app exist, for PostgreSQL, MySQL, and MariaDB. The web app is a first slice: connections, tree, SQL tabs, browse, and inline edit. `web/spikes/grid` is a throwaway prototype.
 
 - [design-spec/design.md](design-spec/design.md): the architecture, including parts not yet built.
 - [design-spec/task.md](design-spec/task.md): the checklist that drives the work.
@@ -21,6 +21,8 @@ Tessera is a plugin-based database client in Go. The `tess` command-line client 
 ## Commands
 
 ```sh
+make                                              # web app + tess; `make help` lists targets
+scripts/build-web.sh                              # web app into web/build/app; needs Node.js
 CGO_ENABLED=0 go build -o tess ./cmd/tess
 go vet ./... && go vet -tags integration ./...
 gofmt -l .
@@ -58,6 +60,8 @@ Dependencies point one way: `cmd/tess` → `internal/cli` → `internal/tui` →
 - **`internal/engine`** is what all front-ends share. `Conn.Run` splits a script, passes every statement through the safety gate before any runs, then records redacted history and audit. Front-ends should go through it, not call tiles directly, or they bypass the gate.
 - **`internal/lang/sqlish`** is a tolerant lexer behind `tile.Language`, used for splitting, classification, and redaction. It never fails on invalid input. It is safety-relevant: a comment or quoting mistake becomes a safety bug, so add cases to its tests and fuzz it after changes. Classification is a guardrail and default-deny; unknown verbs count as writes.
 - **`internal/store`** holds profiles in `config.toml`, and history and audit in SQLite. **`internal/secrets`** holds passwords in an encrypted vault. Secrets reach tiles only through `Env.Secret`, and `SaveProfile` refuses secret-looking keys.
+- **`internal/server`** is `tess serve`: loopback by default, a one-time launch token exchanged for a session cookie, a `Host` allowlist, and a strict CSP. Inline scripts in `index.html` are allowed by hash and CodeMirror's styles by a per-response nonce, so never add inline styles or `{@html}`. `/api` goes through the engine; exec streams NDJSON frames and returns 409 with prompts for statements that need confirmation.
+- **`web`** is the SvelteKit 3 SPA (`#lib/...` imports, config inside `vite.config.ts`), built into `web/build/app` and embedded by `web/embed.go`. Rows live in plain arrays with a version counter, not deep `$state`.
 - **`internal/tui`** is the Bubble Tea front-end. Workers report through `Model.events` and never touch model state. `actions` is the one registry behind keys, the palette, and help. Tests in `fake_test.go` run a real program with no terminal, on a fake tile.
 - **`internal/tiles/sqlgen`** builds browse and edit statements for both SQL tiles. **`internal/meta`** caches the catalog for completion.
 - **`internal/ioformat`** has streaming writers. Database content is untrusted: the table writer strips terminal control characters, and CSV neutralizes formulas.

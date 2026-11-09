@@ -603,7 +603,7 @@ XLSX export is write-only, around 200 lines on `archive/zip` and `encoding/xml`,
 | `svelte` | UI |
 | `@codemirror/{state,view,commands,language,autocomplete,lint,search,lang-sql,lang-json}` and `@lezer/*` | Editor |
 
-Build-time only: `@sveltejs/kit`, `@sveltejs/adapter-static`, `vite`, `typescript`, `playwright`, `@axe-core/playwright`, `vitest`.
+Build-time only: `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sveltejs/vite-plugin-svelte` (Kit's required peer), `vite`, `typescript`, `svelte-check` (type checks `.svelte` files), `playwright`, `@axe-core/playwright`, `vitest`.
 
 Excluded: Tailwind (design tokens in CSS variables suffice), component libraries, icon libraries (a small inline SVG set), and date libraries (`Intl`).
 

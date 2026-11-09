@@ -46,7 +46,7 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 ### Project setup
 
 - [x] Run `git init`, then add `go.mod`, `.gitignore`, license, and README
-- [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/server`, `internal/spool`, and `internal/wire` remain)
+- [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/spool` and `internal/wire` remain)
 - [x] Set up CI for `go vet`, `go test`, `gofmt`, and `CGO_ENABLED=0` builds on Linux, macOS, and Windows
 - [x] Add `govulncheck` per `GOOS`
 - [ ] Add `osv-scanner` once npm dependencies exist
@@ -148,7 +148,7 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 
 - [x] Subcommands: `tess connect`, `tess query`, `tess history`, `tess audit verify`, profile management
 - [x] Subcommand: `tess tui`
-- [ ] Subcommand: `tess serve`
+- [x] Subcommand: `tess serve`
 - [x] `tess query` output as table, CSV, and JSON, safe in pipes and scripts
 - [x] Lip Gloss theme generated from the shared tokens, with `NO_COLOR` and color fallback
 - [x] TUI layout: tree, editor, grid, status line, environment banner
@@ -159,32 +159,38 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 
 ### Web server
 
-- [ ] Bind to `127.0.0.1`, with a per-launch token and one-time URL
-- [ ] `Host` allowlist, `CrossOriginProtection`, CSP and security headers
-- [ ] Refuse non-local binding without TLS or an explicit proxy flag
+- [x] Bind to `127.0.0.1`, with a per-launch token and one-time URL
+- [x] `Host` allowlist, `CrossOriginProtection`, CSP and security headers
+- [x] Refuse non-local binding without TLS or an explicit proxy flag
 - [ ] Single admin account with Argon2id and secure cookies
-- [ ] Build connection settings field by field, with no raw connection strings
-- [ ] API: connections, tree, describe, exec, pages, cancel, plan, apply, complete
-- [ ] One SSE event stream per browser tab, handling the HTTP/1.1 connection limit
-- [ ] Embed the frontend with `go:embed`, with a committed placeholder so builds work
+- [x] Build connection settings field by field, with no raw connection strings
+- [x] API: connections, tree, exec, pages, cancel, plan, apply
+- [ ] API: describe and complete
+- [ ] One SSE event stream per browser tab, handling the HTTP/1.1 connection limit (exec streams NDJSON per request for now)
+- [x] Embed the frontend with `go:embed`, with a committed placeholder so builds work
 
 ### Web frontend
 
 The grid prototype already follows light and dark themes, tested by `web/spikes/grid/theme.mjs`.
 
-- [ ] SvelteKit static SPA with a pinned lockfile and `--ignore-scripts`
-- [ ] Design tokens as CSS variables in light and dark themes, with self-hosted fonts
-- [ ] Theme follows the system by default, with a manual light, dark, or system choice that persists and does not flash on load
+- [x] SvelteKit static SPA with a pinned lockfile and `--ignore-scripts`
+- [x] Design tokens as CSS variables in light and dark themes
+- [ ] Self-hosted Inter and JetBrains Mono fonts
+- [x] Theme follows the system by default, with a manual light, dark, or system choice that persists and does not flash on load
 - [ ] Every screen and component is tested in both themes, including the AA contrast check
-- [ ] App shell: tree, tabs, resizable panes, status bar, environment banner
-- [ ] Connection tiles with color, glyph, and label
-- [ ] CodeMirror editor with engine-driven autocomplete, tabs, and history
-- [ ] Production grid from the Phase 0 prototype, with decoding in a Web Worker
-- [ ] Browse: pagination, sort, filter, column show and hide
-- [ ] Inline edit with pending state, preview, apply, and rollback
-- [ ] Connection form rendered from `Form`
-- [ ] Empty, error, and loading states, with row progress and a cancel button
-- [ ] Render all database values as text only, with a lint rule banning `{@html}` on data
+- [x] App shell: tree, tabs, resizable panes, status bar, environment banner
+- [x] Connection tiles with color, glyph, and label
+- [x] CodeMirror editor with tabs and SQL keyword completion
+- [ ] Engine-driven autocomplete and query history in the editor
+- [x] Virtualized grid with keyboard navigation, from the Phase 0 prototype
+- [ ] Grid decoding in a Web Worker
+- [x] Browse: pagination, sort, filter
+- [ ] Browse: column show and hide
+- [x] Inline edit with pending state, preview, apply, and rollback
+- [x] Connection form rendered from `Form`
+- [x] Empty, error, and loading states, with row progress and a cancel button
+- [x] Render all database values as text only
+- [ ] Lint rule banning `{@html}` on data
 - [ ] Add axe and Playwright tests, and bundle size budget in CI
 
 ### Export
