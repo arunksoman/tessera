@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+reason = "No fix available; transitive dep pulled in by @sveltejs/vite-plugin-svelte"

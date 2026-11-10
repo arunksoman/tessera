@@ -67,6 +67,7 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@v2.7.0 # dependabot will pin to a SHA
         with:
           scan-args: |-
+            --config=osv-scanner.toml
             --lockfile=web/package-lock.json
 
   vulnerabilities:
