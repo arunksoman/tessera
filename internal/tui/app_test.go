@@ -355,6 +355,7 @@ func TestHistoryFillsTheEditorRedacted(t *testing.T) {
 	a.typeText("SELECT 41")
 	a.keys("f5")
 	a.see("row 1 of 1")
+	a.gone("Esc cancels") // runDoneMsg processed: record() has written history
 	a.keys("alt+t")
 	a.see("dev 2")
 	a.keys("ctrl+r")
