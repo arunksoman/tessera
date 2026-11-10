@@ -49,7 +49,7 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [ ] Create the repository layout from section 10, without `desktop/` and `internal/tiles/redis/` (built package by package; `internal/spool` and `internal/wire` remain)
 - [x] Set up CI for `go vet`, `go test`, `gofmt`, and `CGO_ENABLED=0` builds on Linux, macOS, and Windows
 - [x] Add `govulncheck` per `GOOS`
-- [ ] Add `osv-scanner` once npm dependencies exist
+- [x] Add `osv-scanner` once npm dependencies exist
 - [x] Add the dependency allowlist check
 - [x] Add the `docker compose` database matrix behind `//go:build integration`
 - [ ] Add benchmarks with `benchstat`, and fail CI on a regression over 10%

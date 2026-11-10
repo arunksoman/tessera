@@ -63,6 +63,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run build
+      - name: Scan npm dependencies for vulnerabilities
+        uses: google/osv-scanner-action@v2 # dependabot will pin to a SHA
+        with:
+          scan-args: |-
+            --lockfile=web/package-lock.json
 
   vulnerabilities:
     strategy:
