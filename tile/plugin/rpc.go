@@ -293,7 +293,13 @@ func (p *peer) call(ctx context.Context, method string, params, out any) error {
 		return p.closedErr()
 	}
 	if m.Error != nil {
-		return decodeError(m.Error)
+		err := decodeError(m.Error)
+		// The other side only knows it was cancelled. The caller's own reason, such as a
+		// deadline, is the one to report, as an in-process tile would.
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			return fmt.Errorf("%s: %w", err.Error(), context.Cause(ctx))
+		}
+		return err
 	}
 	if out == nil || len(m.Result) == 0 {
 		return nil

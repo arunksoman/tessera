@@ -387,3 +387,21 @@ func TestOversizedMessageIsRefused(t *testing.T) {
 		t.Fatal("long line accepted")
 	}
 }
+
+// A deadline on the host must surface as a deadline, though the plugin only sees a cancel.
+func TestDeadlineSurvivesTheBoundary(t *testing.T) {
+	c, _ := pair(t, &fakeTile{})
+	s, err := open(t, c).Session(context.Background(), tile.SessionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.Execute(context.Background(), tile.Request{Text: "sleep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := st.Next(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+}
