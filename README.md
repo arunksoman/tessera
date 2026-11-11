@@ -94,6 +94,43 @@ It listens on loopback by default. Any other address needs TLS (`--tls-cert` and
 
 Exit codes: `0` success, `1` error, `2` usage error, `3` refused by a safety check.
 
+### Plugins
+
+PostgreSQL, MySQL, and MariaDB are built in. Other databases come as plugins: separate programs that tess starts on demand and talks to over standard input and output.
+
+```sh
+tess plugin trust acme "PUBLIC-KEY"                       # once, for each publisher you trust
+tess plugin install redis --from github:acme/tessera-redis  # or --from https://.../tessera-plugin.json
+tess profile add cache --tile redis --host 127.0.0.1 --set db=0
+tess plugin list
+tess plugin verify
+tess plugin remove redis
+```
+
+To make `tess plugin install NAME` work without `--from`, map names to sources in `config.toml`:
+
+```toml
+[plugins]
+indexes = ["https://example.com/tessera-plugins/index.json"]   # {"plugins": {"redis": "github:acme/tessera-redis"}}
+
+[plugins.sources]
+elasticsearch = "github:acme/tessera-elasticsearch@v0.2.0"
+
+[plugins.trusted_keys]
+acme = "PUBLIC-KEY"
+```
+
+A plugin runs with your permissions and is not sandboxed. tess shows the publisher, source, and SHA-256 and asks before installing, refuses plugins that no trusted key signed unless you pass `--allow-unsigned`, downloads only over https, pins the binary's hash and checks it again before every start, and hands a plugin only the secrets of its own connections. `tess serve` loads no plugins unless `allow_in_server = true` is set under `[plugins]`.
+
+To write a plugin, implement the [`tile`](tile/tile.go) interfaces and call `plugin.Serve` from [`tile/plugin`](tile/plugin/wire.go) in `main`; run [`tiletest`](tile/tiletest/tiletest.go) against it with `tiletest.OutOfProcess`. Publish a `tessera-plugin.json` descriptor in a release, then sign it:
+
+```sh
+tess plugin keygen --out acme.key     # prints the public key users trust
+tess plugin sign --key acme.key tessera-plugin.json
+```
+
+The descriptor format and protocol are in [design.md section 3](design-spec/design.md#3-plugin-system).
+
 ### Secrets
 
 The master key lives in the OS keychain. On hosts without one, set `TESSERA_MASTER_KEY_FILE` to a 32-byte key file, or `TESSERA_PASSPHRASE` to a passphrase. Config and state live in the platform config directory, or in `TESSERA_CONFIG_DIR` if set.

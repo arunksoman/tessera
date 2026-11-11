@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	"github.com/arunksoman/tessera/internal/engine"
 	"github.com/arunksoman/tessera/internal/ioformat"
+	"github.com/arunksoman/tessera/internal/plugins"
 	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/store"
 	"github.com/arunksoman/tessera/internal/tui"
@@ -27,7 +29,7 @@ import (
 const usage = `tess: a universal database client
 
 Usage:
-  tess profile add NAME --tile postgres|mysql [--host H] [--port N] [--user U] [--database D]
+  tess profile add NAME --tile TILE [--host H] [--port N] [--user U] [--database D] [--set KEY=VALUE]...
                         [--tls MODE] [--env production] [--read-only] [--no-history] [--password-stdin]
   tess profile list
   tess profile rm NAME
@@ -37,6 +39,10 @@ Usage:
   tess query -c NAME [-f table|csv|json] [--yes] [--raw] [--timeout 30s] [SQL]
   tess history -c NAME [-n 20]
   tess audit verify
+  tess plugin install NAME [--from SOURCE] [--sha256 HEX] [--allow-unsigned] [--force] [--yes]
+  tess plugin list | remove NAME | verify [NAME]
+  tess plugin trust PUBLISHER PUBLIC-KEY | untrust PUBLISHER | keys
+  tess plugin keygen --out FILE | sign --key FILE DESCRIPTOR
   tess version
 `
 
@@ -82,6 +88,8 @@ func (a *App) Run(args []string) int {
 		err = a.audit(args[1:])
 	case "tui":
 		err = a.tui(args[1:])
+	case "plugin":
+		err = a.plugin(args[1:])
 	default:
 		err = usageErr("unknown command %q", args[0])
 	}
@@ -156,14 +164,43 @@ func (a *App) openStore() (*store.Store, *secrets.Vault, error) {
 	return st, vault, nil
 }
 
-// OpenEngine opens the store and vault behind an engine with the app's tiles, for
-// front-ends outside this package such as tess serve. Call close when done.
+// OpenEngine opens the store and vault behind an engine for tess serve. Call close when
+// done. Installed plugins load only if allow_in_server is set in config.toml.
 func (a *App) OpenEngine() (e *engine.Engine, close func(), err error) {
 	st, vault, err := a.openStore()
 	if err != nil {
 		return nil, nil, err
 	}
-	return engine.New(st, vault, actor(), a.Tiles...), func() { st.Close() }, nil
+	e, stop := a.engine(st, vault, true)
+	return e, func() { stop(); st.Close() }, nil
+}
+
+// engine builds an engine with the built-in tiles and the installed plugins. Plugin
+// processes start on first use, and stop runs when the caller is done.
+func (a *App) engine(st *store.Store, vault *secrets.Vault, server bool) (*engine.Engine, func()) {
+	tiles := slices.Clone(a.Tiles)
+	builtins := make([]string, len(a.Tiles))
+	for i, t := range a.Tiles {
+		builtins[i] = t.Manifest().ID
+	}
+	loaded, errs := plugins.Load(plugins.Dir(st.Dir()), builtins)
+	if server && len(loaded) > 0 {
+		if ps, err := st.PluginSettings(); err != nil || !ps.AllowInServer {
+			fmt.Fprintf(a.Stderr, "tess: %d plugin(s) not loaded: set allow_in_server under [plugins] in config.toml to use them in tess serve\n", len(loaded))
+			loaded = nil
+		}
+	}
+	for _, err := range errs {
+		fmt.Fprintf(a.Stderr, "warning: %v\n", err)
+	}
+	for _, p := range loaded {
+		tiles = append(tiles, plugins.AsTile(p))
+	}
+	return engine.New(st, vault, actor(), tiles...), func() {
+		for _, p := range loaded {
+			p.Close()
+		}
+	}
 }
 
 func actor() string {
@@ -220,7 +257,7 @@ func (a *App) profile(args []string) error {
 
 func (a *App) profileAdd(args []string) error {
 	fs := a.flags("profile add")
-	tileID := fs.String("tile", "", "postgres or mysql")
+	tileID := fs.String("tile", "", "postgres, mysql, or an installed plugin")
 	host := fs.String("host", "", "host name or address")
 	socket := fs.String("socket", "", "Unix socket (MySQL)")
 	port := fs.String("port", "", "port")
@@ -231,6 +268,15 @@ func (a *App) profileAdd(args []string) error {
 	readOnly := fs.Bool("read-only", false, "refuse writes")
 	noHistory := fs.Bool("no-history", false, "record no statement history; audit still records writes")
 	pwStdin := fs.Bool("password-stdin", false, "read the password from standard input")
+	extra := map[string]string{}
+	fs.Func("set", "set connection form field `KEY=VALUE`, for fields without a flag; repeatable", func(v string) error {
+		k, val, ok := strings.Cut(v, "=")
+		if !ok || k == "" {
+			return errors.New("want KEY=VALUE")
+		}
+		extra[k] = val
+		return nil
+	})
 	rest, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -238,14 +284,21 @@ func (a *App) profileAdd(args []string) error {
 	if len(rest) != 1 {
 		return usageErr("profile add needs one name")
 	}
-	var known bool
-	for _, t := range a.Tiles {
-		known = known || t.Manifest().ID == *tileID
+	st, vault, err := a.openStore()
+	if err != nil {
+		return err
 	}
-	if !known {
-		return usageErr("--tile must be postgres or mysql, got %q", *tileID)
+	defer st.Close()
+	e, stop := a.engine(st, vault, false)
+	defer stop()
+	if _, known := e.Tile(*tileID); !known {
+		var ids []string
+		for _, t := range e.Tiles() {
+			ids = append(ids, t.Manifest().ID)
+		}
+		return usageErr("--tile must be one of %s, got %q", strings.Join(ids, ", "), *tileID)
 	}
-	values := map[string]string{}
+	values := extra
 	for k, v := range map[string]string{"host": *host, "socket": *socket, "port": *port, "user": *dbUser, "database": *database} {
 		if v != "" {
 			values[k] = v
@@ -258,11 +311,6 @@ func (a *App) profileAdd(args []string) error {
 		}
 		values[key] = *tlsMode
 	}
-	st, vault, err := a.openStore()
-	if err != nil {
-		return err
-	}
-	defer st.Close()
 	if *pwStdin {
 		pw, err := a.readSecret()
 		if err != nil {
@@ -276,7 +324,7 @@ func (a *App) profileAdd(args []string) error {
 	if err := st.SaveProfile(p); err != nil {
 		return err
 	}
-	for _, w := range engine.New(st, vault, actor(), a.Tiles...).Warnings(p) {
+	for _, w := range e.Warnings(p) {
 		fmt.Fprintf(a.Stderr, "warning: %s\n", w)
 	}
 	return nil
@@ -301,12 +349,14 @@ func (a *App) open(ctx context.Context, name string) (*engine.Conn, func(), erro
 	if err != nil {
 		return nil, nil, err
 	}
-	c, err := engine.New(st, vault, actor(), a.Tiles...).Open(ctx, name)
+	e, stop := a.engine(st, vault, false)
+	c, err := e.Open(ctx, name)
 	if err != nil {
+		stop()
 		st.Close()
 		return nil, nil, err
 	}
-	return c, func() { c.Close(); st.Close() }, nil
+	return c, func() { c.Close(); stop(); st.Close() }, nil
 }
 
 func (a *App) connect(args []string) error {
@@ -489,7 +539,9 @@ func (a *App) tui(args []string) error {
 			return err
 		}
 	}
-	return tui.Run(engine.New(st, vault, actor(), a.Tiles...), profile)
+	e, stop := a.engine(st, vault, false)
+	defer stop()
+	return tui.Run(e, profile)
 }
 
 func (a *App) audit(args []string) error {

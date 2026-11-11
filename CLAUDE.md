@@ -53,10 +53,12 @@ Compose ports and logins are in [README.md](README.md). Alpine images are the de
 
 ## Architecture
 
-Dependencies point one way: `cmd/tess` → `internal/cli` → `internal/tui` → `internal/engine` → the `tile` contract, which `internal/tiles/*` implement. `cmd/tess/main.go` holds the explicit list of compiled-in tiles.
+Dependencies point one way: `cmd/tess` → `internal/cli` → `internal/tui` → `internal/engine` → the `tile` contract, which `internal/tiles/*` implement. `cmd/tess/main.go` holds the explicit list of compiled-in tiles; installed plugins are added after them in `internal/cli`.
 
 - **`tile`** is the plugin contract and imports only the standard library. It is `v0` until NoSQL tiles prove it. Nothing in it may assume SQL: `Request` text is opaque, and the object tree is plugin-defined. New features belong in new optional interfaces, not as methods on existing ones.
-- **`tile/tiletest`** is one conformance suite that every tile runs. Add behaviour expected of all tiles here, not in a single tile's tests. Each tile's `integration_test.go` supplies a `Harness`.
+- **`tile/plugin`** runs a tile in its own process: newline-delimited JSON over stdin and stdout, standard library only. `Serve` is the plugin side and `Client` the host side, which reports facets so type assertions still work. Host-side language calls fail safe (destructive, fully redacted) when the plugin cannot answer.
+- **`internal/plugins`** installs, verifies, and launches plugins: https or local sources, Ed25519 descriptor signatures against trusted keys, SHA-256 pinned at install and re-checked before each launch, and an allowlisted environment. Plugins are not sandboxed, so every install needs explicit consent, and `tess serve` loads none unless configured to.
+- **`tile/tiletest`** is one conformance suite that every tile runs. Add behaviour expected of all tiles here, not in a single tile's tests. Each tile's `integration_test.go` supplies a `Harness`, and runs the suite again out of process through `tiletest.OutOfProcess`.
 - **`internal/engine`** is what all front-ends share. `Conn.Run` splits a script, passes every statement through the safety gate before any runs, then records redacted history and audit. Front-ends should go through it, not call tiles directly, or they bypass the gate.
 - **`internal/lang/sqlish`** is a tolerant lexer behind `tile.Language`, used for splitting, classification, and redaction. It never fails on invalid input. It is safety-relevant: a comment or quoting mistake becomes a safety bug, so add cases to its tests and fuzz it after changes. Classification is a guardrail and default-deny; unknown verbs count as writes.
 - **`internal/store`** holds profiles in `config.toml`, and history and audit in SQLite. **`internal/secrets`** holds passwords in an encrypted vault. Secrets reach tiles only through `Env.Secret`, and `SaveProfile` refuses secret-looking keys.

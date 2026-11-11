@@ -6,11 +6,12 @@ Implementation checklist for [design.md](design.md). Section numbers below refer
 
 **In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB and PostgreSQL.
 
-**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, SQLite tile, third-party plugins and the gRPC host, query sharing and charts.
+**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, SQLite tile, query sharing and charts. Redis and Elasticsearch can arrive as installable plugins without changes to `tess`.
 
 **Changes from the design:**
 
 - No internal Redis tile, so the `tile` contract is tested on SQL only. It stays `v0`, and NoSQL may force breaking changes to it later.
+- Third-party plugins were pulled forward from Phase 3, without gRPC: a standard-library JSON protocol over standard input and output (design section 3).
 - No Wails spike, `Transport` abstraction, `go.work`, or `desktop/` module. The HTTP API and SPA stay free of desktop assumptions, so these can be added later.
 
 ## Decisions needed first
@@ -60,6 +61,25 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Remove facets and types that neither SQL tile needs yet
 - [x] Build the `tiletest` conformance suite: streaming, cancel, read-only, tree paging, hostile identifiers
 - [x] Add browse and plan purity to `tiletest`, once those facets exist
+
+### Plugins
+
+Design section 3. Built before the contract is frozen, so plugins built now may need rebuilding while `tile` is `v0`.
+
+- [x] Out-of-process protocol in `tile/plugin`, standard library only: `Serve` for plugins and a host client that the engine cannot tell from an in-process tile
+- [x] Facets, cancel, stream context, and secret callbacks across the process boundary, with frame validation and fail-safe language calls
+- [x] `tiletest.OutOfProcess`, and out-of-process conformance tests for the PostgreSQL and MySQL tiles
+- [ ] Pass the out-of-process conformance run against the compose databases (wired into the integration job; not yet run)
+- [x] `tess plugin install` from `github:OWNER/REPO[@TAG]`, an https descriptor URL, or a local path, with sources and indexes in `config.toml`
+- [x] Ed25519 descriptor signatures, `tess plugin trust`, `keygen`, and `sign`; unsigned installs only with `--allow-unsigned`
+- [x] SHA-256 pinning at install, re-checked before each launch and by `tess plugin verify`
+- [x] Confirmation before install, https-only downloads and redirects, size caps, staged install, manifest check
+- [x] Allowlisted plugin environment, per-connection secret scoping, and plugins off by default in `tess serve`
+- [x] `tess plugin list` and `remove`, and `profile add --set` for plugin form fields
+- [ ] Meet the out-of-process throughput gate (protocol ceiling measured at about 517k one-column rows/s; see spike-results.md)
+- [ ] Carry `Env.Dial` and the `Completer` facet across the protocol
+- [ ] Refuse downgrades to an older signed version
+- [ ] Publish an official index and publisher key, so `tess plugin install NAME` works without configuration
 
 ### Platform services
 

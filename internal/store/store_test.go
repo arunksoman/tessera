@@ -148,3 +148,33 @@ func TestStateFileIsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPluginSettingsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SaveProfile(Profile{Name: "dev", Tile: "postgres"}); err != nil {
+		t.Fatal(err)
+	}
+	want := PluginSettings{
+		TrustedKeys: map[string]string{"acme": "AAAA"},
+		Sources:     map[string]string{"redis": "github:acme/tessera-redis"},
+		Indexes:     []string{"https://example.com/index.json"},
+	}
+	if err := s.SavePluginSettings(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.PluginSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TrustedKeys["acme"] != "AAAA" || got.Sources["redis"] != want.Sources["redis"] || len(got.Indexes) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	if _, err := s.Profile("dev"); err != nil {
+		t.Fatal("saving plugin settings lost a profile:", err)
+	}
+}
