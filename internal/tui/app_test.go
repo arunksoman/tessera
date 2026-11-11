@@ -216,8 +216,13 @@ func TestSortAndFilterAskTheServer(t *testing.T) {
 	a.typeText("> m")
 	a.keys("enter")
 	a.see("where name > m")
-	if !db.ran(`"name" > $1`) {
-		t.Fatalf("filter did not reach the server: %v", db.executed)
+	// The label shows before the worker runs the page query, so wait for the query too.
+	deadline := time.Now().Add(5 * time.Second)
+	for !db.ran(`"name" > $1`) {
+		if time.Now().After(deadline) {
+			t.Fatalf("filter did not reach the server: %v", db.executed)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	a.keys("c")
 	a.gone("where name")

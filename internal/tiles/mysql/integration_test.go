@@ -12,6 +12,19 @@ import (
 	"github.com/arunksoman/tessera/tile/tiletest"
 )
 
+func TestMain(m *testing.M) {
+	tiletest.ServeIfChild(Tile{})
+	os.Exit(m.Run())
+}
+
+// TestConformanceOutOfProcess runs the same suite with the tile behind the plugin protocol.
+func TestConformanceOutOfProcess(t *testing.T) {
+	tl := tiletest.OutOfProcess(t)
+	for name, port := range map[string]string{"mysql84": "53384", "mariadb114": "53114"} {
+		t.Run(name, func(t *testing.T) { tiletest.Run(t, harnessFor(tl, port)) })
+	}
+}
+
 func TestConformance(t *testing.T) {
 	servers := map[string]string{"mysql84": "53384", "mariadb114": "53114"}
 	if os.Getenv("TESSERA_TEST_MATRIX") != "" {
@@ -70,12 +83,14 @@ func TestTLSModesAgainstSelfSignedServer(t *testing.T) {
 	}
 }
 
-func harness(port string) tiletest.Harness {
+func harness(port string) tiletest.Harness { return harnessFor(Tile{}, port) }
+
+func harnessFor(tl tile.Tile, port string) tiletest.Harness {
 	return tiletest.Harness{
 		Open: func(t *testing.T) tile.Conn {
 			t.Helper()
 			env := tile.Env{Secret: func(context.Context, string) ([]byte, error) { return []byte("tessera_dev"), nil }}
-			c, err := Tile{}.Open(context.Background(), tile.ConnConfig{Values: map[string]string{
+			c, err := tl.Open(context.Background(), tile.ConnConfig{Values: map[string]string{
 				"host": "127.0.0.1", "port": port, "user": "tessera", "database": "tessera_test", "tlsmode": "DISABLED",
 			}}, env)
 			if err != nil {

@@ -50,7 +50,42 @@ type Profile struct {
 
 type config struct {
 	Settings
+	Plugins  PluginSettings     `toml:"plugins,omitempty"`
 	Profiles map[string]Profile `toml:"profiles"`
+}
+
+// PluginSettings control where third-party plugins come from and whom to trust.
+type PluginSettings struct {
+	// TrustedKeys maps a publisher name to a base64 Ed25519 public key. A signed plugin
+	// installs only if one of these keys signed it.
+	TrustedKeys map[string]string `toml:"trusted_keys,omitempty"`
+	// Sources maps a plugin name to where it comes from, such as "github:owner/repo",
+	// an https URL of a plugin descriptor, or a local path.
+	Sources map[string]string `toml:"sources,omitempty"`
+	// Indexes are https URLs of JSON indexes that map plugin names to sources, tried in order
+	// for names not in Sources.
+	Indexes []string `toml:"indexes,omitempty"`
+	// AllowInServer loads plugins in tess serve, which refuses them by default.
+	AllowInServer bool `toml:"allow_in_server,omitempty"`
+}
+
+// PluginSettings returns the plugin configuration.
+func (s *Store) PluginSettings() (PluginSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.loadConfig()
+	return c.Plugins, err
+}
+
+func (s *Store) SavePluginSettings(v PluginSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, err := s.loadConfig()
+	if err != nil {
+		return err
+	}
+	c.Plugins = v
+	return s.saveConfig(c)
 }
 
 // Settings are app-wide preferences.

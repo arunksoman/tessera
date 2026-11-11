@@ -7,7 +7,7 @@ The plugin contract is [tile/tile.go](../tile/tile.go). It holds only what is bu
 
 | Question | Decision |
 |---|---|
-| Plugin mechanism | Hybrid. First-party tiles compile in. Third-party tiles run out of process over gRPC, added only after the NoSQL tiles have proven the contract. |
+| Plugin mechanism | Hybrid. First-party tiles compile in. Third-party tiles run out of process, speaking newline-delimited JSON over standard input and output, and install with `tess plugin install`. No gRPC. |
 | Frontend | Svelte 5 with SvelteKit in static SPA mode. HTMX is rejected for this product. |
 | Editor | CodeMirror 6 |
 | Grid | Custom DOM-virtualized grid. No canvas, because of accessibility. |
@@ -83,7 +83,7 @@ flowchart TB
     PG["postgres"]
     MY["mysql / mariadb"]
     FUT["redis, mongodb,<br/>elasticsearch"]
-    HOST["Out-of-process host<br/>gRPC"]
+    HOST["Out-of-process host<br/>JSON over stdio"]
   end
   ENG --> TILES
   HOST --> EXT["Third-party tile<br/>separate process"]
@@ -200,44 +200,87 @@ The hardest fit is Redis, because a key's edit form depends on its type. `Change
 | Option | Overhead | Isolation | Verdict |
 |---|---|---|---|
 | Compile-time registration | None | None | **Use for all first-party tiles.** |
-| Out of process over gRPC (`hashicorp/go-plugin` v1.8) | Copy and framing per batch, startup cost per plugin | Crash isolation, separate address space, not a sandbox | **Use for third-party tiles, from Phase 3.** |
+| Out of process, JSON over stdio (`tile/plugin`) | Encoding and a pipe per call; base64 for byte values | Crash isolation, separate address space, not a sandbox | **Use for third-party tiles. Built.** |
+| Out of process over gRPC (`hashicorp/go-plugin`) | Copy and framing per batch | Same as above | **Rejected.** It brings the largest dependency tree in the project into a binary that must stay small and audited, and the `tile` package could no longer be standard-library only. |
 | WASM (`wazero` 1.12) | Moderate, and all I/O proxied | Real sandbox | **Reject for drivers.** WASI preview 1 cannot open outbound sockets, so no existing Go driver would work without a host-proxied socket layer. Reconsider for sandboxed helpers such as formatters. |
 | Go `plugin` package | None | None | **Reject.** No Windows support, requires an exact toolchain and dependency match, and plugins cannot be unloaded. |
 
-**Why the out-of-process host waits for Phase 3.** It brings in gRPC and protobuf, which is the largest dependency tree in the project, and no third-party tile can exist before the contract is stable. Batching keeps overhead low, since one RPC carries thousands of rows. A release gate requires out-of-process throughput within 15% of in-process, measured with the same benchmark.
+**Registration:** first-party tiles use an explicit list in `cmd/tess`, not `init()` side effects, so the set of compiled-in code is visible in one place. Installed plugins are added after them, and a plugin can never take a built-in tile's ID.
 
-**Registration:** first-party tiles use an explicit list in `cmd/tess`, not `init()` side effects, so the set of compiled-in code is visible in one place.
+### Protocol
 
-**gRPC contract:** one service per facet, mirroring the Go interfaces. The host wraps them in the same `tile.Tile` interface, so the engine cannot tell the two kinds apart.
+[tile/plugin](../tile/plugin) holds both ends and imports only the standard library. A plugin author writes an ordinary tile and calls `plugin.Serve(t)` from `main`. The host wraps the process in the same `tile.Tile` interface, so the engine, safety gate, history, and audit cannot tell the two kinds apart.
 
-```proto
-service Tile   { rpc Handshake(HostInfo) returns (Manifest); rpc Open(OpenRequest) returns (OpenReply); }
-service Conn   { rpc Capabilities(ConnRef) returns (CapabilitySet); rpc OpenSession(SessionRequest) returns (SessionRef); }
-service Exec   { rpc Execute(ExecuteRequest) returns (stream Frame); rpc Cancel(CancelRequest) returns (Empty); }
-service Tree   { rpc Children(ChildrenRequest) returns (ChildrenReply); rpc Describe(ObjectRef) returns (ObjectDetail); }
-service Editor { rpc Plan(ChangeSet) returns (Plan); rpc Apply(ApplyRequest) returns (ApplyResult); }
-// Host-side service the plugin calls back into:
-service HostEnv { rpc Dial(stream DialFrame) returns (stream DialFrame); rpc Secret(SecretRequest) returns (SecretReply); }
+- One JSON object per line. A request is `{"id","method","params"}`, a response `{"id","result"}` or `{"id","error"}`, and `{"cancel":id}` cancels a request. Either side may call the other, and ids are per sender, so a plugin can call back for secrets while the host waits on it. Tile types travel in their `encoding/json` form. Because it is plain JSON, a plugin can be written in any language.
+- Methods mirror the Go interfaces (`tile.open`, `conn.session`, `session.execute`, `stream.next`, `lang.classify`, and so on), with conns, sessions, and streams named by handles. Optional facets cannot be found by type assertion across a process, so the plugin reports them at handshake, open, and session time, and the host returns values whose type assertions match.
+- `tile.APIVersion` and a protocol revision are checked at handshake. A mismatch is refused with a clear message.
+- Streams stay pull-based: one `stream.next` call per frame, so not calling it is still the backpressure. The host checks frame order and that each batch holds rows times fields cells, so a faulty plugin cannot confuse the engine.
+- Cancel crosses the boundary. A cancelled host context sends `cancel`, the plugin cancels that call's context, and the host waits a short grace period so the server-side cancel finishes. A stream's context lives until the stream is closed, not just for the `session.execute` call.
+- Messages are capped at 64 MiB. Error and warning text from a plugin is stripped of control characters before it can reach a terminal.
+- When a plugin cannot answer, the host fails safe: `Classify` reports destructive, `Redact` hides the whole statement, `Split` returns one statement, and `ExplainRequest` returns an empty request, never the statement itself.
+- Not carried yet: `Env.Dial` (a plugin dials for itself, as in-process tiles do today) and the `Completer` language facet.
+
+`tiletest.OutOfProcess` re-runs a test binary as a plugin, so the whole conformance suite runs across the boundary. The PostgreSQL and MySQL tiles run it both ways.
+
+### Install
+
+`tess plugin install NAME` finds a source in this order: `--from`, `[plugins.sources]` in `config.toml`, then each URL in `[plugins] indexes`. A source is one of:
+
+| Source | Meaning |
+|---|---|
+| `github:OWNER/REPO` or `github:OWNER/REPO@TAG` | `tessera-plugin.json` in the latest or tagged GitHub release. No GitHub API calls. |
+| `https://…/tessera-plugin.json` | A descriptor anywhere on https |
+| A local path, or `file:PATH` | A descriptor on disk, or a bare binary for development |
+
+An index is JSON, `{"plugins": {"redis": "github:acme/tessera-redis"}}`, over https. It is not signed and need not be: trust rests on the descriptor's signature and the name it signs. An index may not point at a local path.
+
+A **descriptor** names the plugin, version, and tile API version, and maps each `GOOS/GOARCH` to a binary URL and SHA-256. Relative URLs resolve against the descriptor. Its detached Ed25519 signature is the same URL with `.sig` appended, over the exact descriptor bytes with a domain-separation prefix. `tess plugin keygen` and `tess plugin sign` produce both, so publishers need no other tool.
+
+```json
+{
+  "name": "redis", "version": "0.3.0", "api_version": 0,
+  "description": "Redis and Valkey", "homepage": "https://github.com/acme/tessera-redis",
+  "artifacts": {
+    "linux/amd64":   {"url": "tess-redis-linux-amd64", "sha256": "…"},
+    "windows/amd64": {"url": "tess-redis-windows-amd64.exe", "sha256": "…"}
+  }
+}
 ```
 
-gRPC streams give flow control, so backpressure carries across the process boundary.
+Installing:
+
+1. Check the name: lowercase, at most 32 characters, not a built-in tile, not already installed unless `--force`.
+2. Fetch the descriptor (1 MiB cap) and signature. Only https; a redirect to anything else is refused, and so are URLs with credentials.
+3. Verify the signature against `[plugins.trusted_keys]`. A signature that matches no trusted key is refused even with `--allow-unsigned`, because it means tampering or the wrong key. A missing signature needs `--allow-unsigned`. A `--sha256` pin can be added either way.
+4. Check the descriptor's name matches the name asked for, its API version matches, and a build exists for this platform.
+5. Show the name, version, source, binary URL, hash, and signer, say that the plugin is not sandboxed, and ask. Without a terminal, `--yes` is required.
+6. Download into a staging directory under the plugin directory (512 MiB cap), hashing as it goes, and refuse a mismatch.
+7. Start it once to read its manifest, and refuse it if its tile ID differs from its name.
+8. Write `plugin.json` with the pinned hash and manifest, then rename the staging directory into place.
+
+Installed plugins live in `<config dir>/plugins/NAME/`, inside the `0700` config directory.
+
+### Trust model
+
+A separate process is not a sandbox: a plugin runs with the user's OS privileges. Therefore:
+
+- Plugins install only by explicit user action, after showing publisher, source, and hash.
+- A plugin is pinned by SHA-256 at install. Its binary is hashed again before every launch, and a mismatch stops it running. `tess plugin verify` checks on demand. A file swapped between the check and the exec is out of scope: whoever can write the config directory already controls tess.
+- Signed plugins are verified with Ed25519 against keys the user trusted with `tess plugin trust`. Unsigned plugins need `--allow-unsigned` and get a warning.
+- A plugin process gets an allowlisted environment (`PATH`, home and temp directories, locale, proxy and CA settings). Variables such as `TESSERA_MASTER_KEY_FILE` and cloud credentials stay with tess.
+- A plugin receives only the secrets of connections opened through it, through a host callback scoped to that connection, and only until it closes.
+- Plugin processes start on first use, not at every `tess` start, and stop when tess exits.
+- Network traffic goes through `Env.Dial` by convention only. Without an OS sandbox this cannot be forced.
+- `tess serve` refuses plugins unless `allow_in_server = true` is set under `[plugins]` in the config file.
+- A downgrade to an older signed release is not prevented yet, so a compromised source could serve an old, vulnerable version.
+- Landlock and seccomp on Linux, and AppContainer on Windows, are possible later hardening. They are not assumed here.
 
 **Versioning:**
 
-- `tile.APIVersion` is an integer checked at handshake. A mismatch is refused with a clear message.
-- Within a major version, only additions: new facets, capabilities, and optional proto fields.
-- Tiles declare features through capabilities, not through version checks.
+- Within a major version, only additions: new facets, capabilities, methods, and optional fields.
+- Tiles declare features through capabilities and facets, not through version checks.
 - A breaking change means `tile/v2` and a host that serves both for at least one year.
 - `v0` makes no promises. `v1` is declared after the Redis and MongoDB tiles ship.
-
-**Trust model.** A separate process is not a sandbox: an out-of-process tile runs with the user's OS privileges. Therefore:
-
-- Plugins install only by explicit user action, and show publisher, hash, and requested network targets.
-- A plugin is pinned by SHA-256 at install and verified with an Ed25519 signature. Tessera warns on unsigned plugins.
-- A plugin receives only the secrets of connections opened through it, and only at open time.
-- Network traffic goes through `Env.Dial` by convention only. Without an OS sandbox this cannot be forced.
-- `tess serve` refuses third-party plugins unless an admin enables them in the config file.
-- Landlock and seccomp on Linux, and AppContainer on Windows, are possible later hardening. They are not assumed here.
 
 ## 4. CRUD and admin design
 
@@ -447,7 +490,7 @@ Database credentials, SSH keys, query results, history and audit data, and the a
 | Credential stuffing | Argon2id password hashes, rate limits per IP and account, optional OIDC, secure session cookies with server-side revocation |
 | Accidental production damage | Environment tags, confirmations, type-to-confirm on tagged production, plan preview |
 | Insider abuse | Append-only audit table with a hash chain, recording user, connection, statement, and row counts. The chain makes tampering visible, but it is not tamper-proof against someone with file access; forward to syslog for that. |
-| Malicious plugin | Section 3. Signed, pinned, opt-in, and off by default in server mode. Not sandboxed, and the docs say so. |
+| Malicious plugin | Section 3. Signed, hash-pinned and re-checked at each launch, installed only on explicit confirmation, given a scrubbed environment and only its own connections' secrets, and off by default in server mode. Not sandboxed, and the docs say so. |
 | Token helper abuse | Config file only in server mode |
 | Plugin or npm supply chain | See below |
 | Spreadsheet formula injection on export | CSV and XLSX exports neutralize cells starting with `=`, `+`, `-`, `@`, on by default |
@@ -526,6 +569,7 @@ tessera/
 ├── go.work                  # joins root and desktop/
 ├── cmd/tess/                # main: subcommand dispatch, explicit tile list
 ├── tile/                    # public plugin contract, stdlib only
+│   ├── plugin/              # out-of-process protocol: Serve for plugins, Client for the host
 │   └── tiletest/            # conformance suite every tile must pass
 ├── internal/
 │   ├── engine/              # connections, sessions, executor, safety gate
@@ -538,6 +582,7 @@ tessera/
 │   ├── wire/                # binary page encoding, fuzz tests
 │   ├── ioformat/            # CSV, JSON, SQL, XLSX
 │   ├── lang/sqlish/         # tolerant lexer, clause tracker
+│   ├── plugins/             # install, verify, and launch third-party plugins
 │   ├── tiles/
 │   │   ├── postgres/
 │   │   ├── mysql/
@@ -591,7 +636,6 @@ tessera/
 | `github.com/redis/go-redis/v9` | 3 | Sentinel and Cluster support justify it |
 | `go.mongodb.org/mongo-driver/v2` | 3 | No realistic alternative |
 | Elasticsearch | 3 | **No client library.** It is HTTP and JSON, so `net/http` is enough |
-| `github.com/hashicorp/go-plugin` + gRPC + protobuf | 3 | Largest tree. Measure its binary and audit cost before enabling |
 | `github.com/wailsapp/wails/v3` | 4 | Desktop module only |
 
 XLSX export is write-only, around 200 lines on `archive/zip` and `encoding/xml`, so no `excelize`. Import from XLSX is deferred.
@@ -729,9 +773,9 @@ Every item can change the design, so these run before anything else.
 
 - Redis tile released, then MongoDB, then Elasticsearch/OpenSearch, in order of validating value. SQLite follows as a cheap addition.
 - Per-language editors and JSON tree, per-type Redis editors.
-- Freeze `tile` at `v1`, then build the out-of-process host, signing, and SDK.
+- Freeze `tile` at `v1`. The out-of-process host, signing, and install were built early, in Phase 1.
 
-**Exit:** a third-party tile runs through `tiletest` over gRPC within the 15% gate.
+**Exit:** a third-party tile passes `tiletest` out of process within the 15% gate.
 
 ### Phase 4, Desktop (about 2 to 3 months)
 

@@ -35,6 +35,17 @@ Run them with `docker compose up -d --wait`, then `go test -tags integration -v 
 
 The old 200k rows/s target holds when the query is cheap. With expensive expressions the server is the bottleneck: `psql` inside the container alone needed 12.3 s for the 2M rows, a limit of about 163k rows/s. Through the Docker Desktop port the same query took 23.5 s, so the port proxy also costs a large share.
 
+## Plugin protocol throughput
+
+`go test -bench Stream ./tile/plugin/` streams 100,000 one-column integer rows in batches of 1,000 from a fake tile, on a Ryzen 5 7535HS under Windows.
+
+| Path | Rows/s |
+|---|---|
+| In process | 10.9M |
+| Out of process, JSON over pipes | 517k |
+
+The fake tile costs almost nothing, so the in-process number is the engine's ceiling, not a database's. The useful figure is the added cost: about 1.9 µs per row, mostly JSON and base64 encoding of each cell. Against the raw driver's 216k rows/s on cheap values that would cost roughly 30 to 40 percent, so the 15% gate is probably not met for cheap, narrow rows. Expensive queries hide it, because the server is the bottleneck. A compact batch encoding is the next step if real plugins show it matters.
+
 ## Binary size
 
 A `CGO_ENABLED=0` stripped build linking pgx, the MySQL driver, `modernc.org/sqlite`, Bubble Tea, Bubbles, Lip Gloss, `huh`, go-keyring, TOML, and `x/crypto` was **9.7 MB**, with 81 modules in the graph.
