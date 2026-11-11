@@ -264,6 +264,7 @@ type setup struct {
 	stopped  bool
 	width    int
 	height   int
+	version  string
 }
 
 func start(t *testing.T, db *fakeDB, s setup) *app {
@@ -291,6 +292,7 @@ func startWith(t *testing.T, e *engine.Engine, st *store.Store, s setup) *app {
 		s.width, s.height = 120, 40
 	}
 	a := &app{t: t, m: New(e, s.start), st: st, done: make(chan struct{})}
+	a.m.version = s.version
 	a.view.Store("")
 	a.p = tea.NewProgram(probe{a}, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithWindowSize(s.width, s.height))
 	go func() {

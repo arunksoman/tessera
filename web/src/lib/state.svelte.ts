@@ -8,6 +8,8 @@ export type Theme = 'system' | 'light' | 'dark';
 
 class AppState {
 	tiles = $state<Tile[]>([]);
+	/** The tess build serving this page. */
+	version = $state('');
 	profiles = $state<Profile[]>([]);
 	tabs = $state<Tab[]>([]);
 	active = $state<string | null>(null);
@@ -23,9 +25,10 @@ class AppState {
 
 	async load() {
 		try {
-			const [tiles, profiles] = await Promise.all([api.tiles(), api.profiles()]);
+			const [tiles, profiles, v] = await Promise.all([api.tiles(), api.profiles(), api.version()]);
 			this.tiles = tiles;
 			this.profiles = profiles;
+			this.version = v.version;
 			this.loadError = '';
 		} catch (e) {
 			this.loadError = (e as Error).message;
@@ -46,7 +49,7 @@ class AppState {
 
 	openSQL(profile: string, sql = '') {
 		const n = this.tabs.filter((t) => t.kind === 'sql' && t.profile === profile).length + 1;
-		const tab: Tab = { id: randomId(), kind: 'sql', profile, title: `${profile} · SQL ${n}`, sql };
+		const tab: Tab = { id: randomId(), kind: 'sql', profile, title: `${profile} · Query ${n}`, sql };
 		this.tabs.push(tab);
 		this.active = tab.id;
 	}

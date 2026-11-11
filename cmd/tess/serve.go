@@ -8,6 +8,7 @@ import (
 
 	"github.com/arunksoman/tessera/internal/cli"
 	"github.com/arunksoman/tessera/internal/server"
+	tessversion "github.com/arunksoman/tessera/internal/version"
 	"github.com/arunksoman/tessera/web"
 )
 
@@ -44,6 +45,7 @@ func serve(ctx context.Context, app *cli.App, args []string) int {
 	}
 	defer closeEngine()
 	cfg.Engine = e
+	cfg.Version = tessversion.Describe(app.Version)
 	s, err := server.New(cfg)
 	if err != nil {
 		fmt.Fprintf(stderr, "tess: %v\n", err)

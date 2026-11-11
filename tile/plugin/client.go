@@ -35,10 +35,11 @@ func NewClient(r io.Reader, w io.Writer) *Client {
 // Done is closed when the plugin goes away.
 func (c *Client) Done() <-chan struct{} { return c.p.done }
 
-// Handshake checks the plugin speaks this host's tile API and returns what it is.
-func (c *Client) Handshake(ctx context.Context) (HandshakeReply, error) {
+// Handshake checks the plugin speaks this host's tile API and returns what it is. tess is
+// the host's version, passed on for the plugin's logs.
+func (c *Client) Handshake(ctx context.Context, tess string) (HandshakeReply, error) {
 	var reply HandshakeReply
-	err := c.p.call(ctx, MHandshake, HandshakeRequest{APIVersion: tile.APIVersion, Protocol: protocolRevision}, &reply)
+	err := c.p.call(ctx, MHandshake, HandshakeRequest{APIVersion: tile.APIVersion, Protocol: protocolRevision, TessVersion: tess}, &reply)
 	if err != nil {
 		return reply, fmt.Errorf("plugin handshake: %w", err)
 	}

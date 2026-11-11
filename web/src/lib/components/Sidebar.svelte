@@ -40,7 +40,7 @@
 						{#if p.readOnly}<span class="badge ro" title="Read-only">ro</span>{/if}
 					</button>
 					<span class="actions">
-						<button class="btn ghost icon" title="New SQL tab" aria-label="New SQL tab for {p.name}" onclick={() => app.openSQL(p.name)}>⌨</button>
+						<button class="btn ghost icon" title="New query tab" aria-label="New query tab for {p.name}" onclick={() => app.openSQL(p.name)}>⌨</button>
 						<button class="btn ghost icon" title="Edit" aria-label="Edit {p.name}" onclick={() => onedit(p)}>✎</button>
 						<button class="btn ghost icon" title="Delete" aria-label="Delete {p.name}" onclick={() => (deleting = p.name)}>🗑</button>
 					</span>

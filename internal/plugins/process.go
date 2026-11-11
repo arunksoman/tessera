@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arunksoman/tessera/internal/version"
 	"github.com/arunksoman/tessera/tile"
 	"github.com/arunksoman/tessera/tile/plugin"
 )
@@ -86,8 +87,9 @@ type proc struct {
 	exited chan struct{}
 }
 
-// launch starts the binary at path and completes the handshake.
-func launch(ctx context.Context, path, dir string) (*proc, plugin.HandshakeReply, error) {
+// launch starts the binary at path and completes the handshake, telling it this tess's
+// version.
+func launch(ctx context.Context, path, dir, tess string) (*proc, plugin.HandshakeReply, error) {
 	// os.Pipe rather than StdinPipe and StdoutPipe, because Wait closes those while the
 	// client may still be reading.
 	inR, inW, err := os.Pipe()
@@ -121,7 +123,7 @@ func launch(ctx context.Context, path, dir string) (*proc, plugin.HandshakeReply
 	p.client = plugin.NewClient(outR, inW)
 	hctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
-	h, err := p.client.Handshake(hctx)
+	h, err := p.client.Handshake(hctx, tess)
 	if err != nil {
 		p.stop()
 		return nil, h, p.explain(err)
@@ -164,6 +166,7 @@ func (p *proc) alive() bool {
 type Tile struct {
 	rec  Record
 	dir  string
+	tess string // this tess's version
 	mu   sync.Mutex
 	proc *proc
 }
@@ -195,13 +198,18 @@ func (t *Tile) start(ctx context.Context) (*proc, error) {
 	if err := checkHash(path, t.rec.SHA256); err != nil {
 		return nil, fmt.Errorf("plugin %s: %w; reinstall it with tess plugin install --force", t.rec.Name, err)
 	}
-	p, h, err := launch(ctx, path, t.rec.pluginDir(t.dir))
+	p, h, err := launch(ctx, path, t.rec.pluginDir(t.dir), t.tess)
 	if err != nil {
 		return nil, fmt.Errorf("plugin %s: %w", t.rec.Name, err)
 	}
 	if h.Manifest.ID != t.rec.Name {
 		p.stop()
 		return nil, fmt.Errorf("plugin %s now calls itself %q; reinstall it", t.rec.Name, h.Manifest.ID)
+	}
+	// The binary is the authority, since the record may predate a tess upgrade.
+	if err := version.Supports(t.tess, h.Manifest.MinTess, h.Manifest.MaxTess); err != nil {
+		p.stop()
+		return nil, fmt.Errorf("plugin %s %w", t.rec.Name, err)
 	}
 	t.proc = p
 	return p, nil

@@ -63,6 +63,7 @@ func newAPI(e *engine.Engine) *api {
 }
 
 func (s *Server) routes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/version", s.version)
 	mux.HandleFunc("GET /api/tiles", s.tiles)
 	mux.HandleFunc("GET /api/profiles", s.profiles)
 	mux.HandleFunc("PUT /api/profiles/{name}", s.saveProfile)
@@ -196,6 +197,12 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 func sessionOf(r *http.Request) string {
 	s, _ := r.Context().Value(sessionKey{}).(string)
 	return s
+}
+
+// version answers only signed-in browsers, like the rest of /api, so the exact build is not
+// shown to anyone who can merely reach the port.
+func (s *Server) version(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.cfg.Version})
 }
 
 // --- tiles and profiles ---
@@ -508,6 +515,12 @@ type layoutJSON struct {
 	Key      []string    `json:"key"`
 	Note     string      `json:"note,omitempty"`
 	Estimate int64       `json:"estimate"`
+	Shape    string      `json:"shape"`
+}
+
+var shapeNames = map[tile.Shape]string{
+	tile.ShapeTabular: "table", tile.ShapeDocument: "document", tile.ShapeTree: "tree",
+	tile.ShapeKeyValue: "keyvalue", tile.ShapeScalar: "scalar",
 }
 
 var filterOps = []tile.FilterOp{tile.OpEq, tile.OpNe, tile.OpLt, tile.OpLe, tile.OpGt, tile.OpGe, tile.OpContains, tile.OpNull, tile.OpNotNull}
@@ -535,6 +548,7 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		} `json:"filter"`
 		After  []Cell `json:"after"`
 		Offset int64  `json:"offset"`
+		Cursor string `json:"cursor"`
 		Limit  int    `json:"limit"`
 	}
 	if !readJSON(w, r, &in) {
@@ -552,7 +566,7 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	q := tile.BrowseQuery{Offset: max(0, in.Offset), Limit: in.Limit}
+	q := tile.BrowseQuery{Offset: max(0, in.Offset), Limit: in.Limit, Cursor: in.Cursor}
 	if q.Limit <= 0 {
 		q.Limit = browseLimit
 	}
@@ -590,7 +604,10 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		Layout layoutJSON  `json:"layout"`
 		Fields []fieldJSON `json:"fields"`
 		Rows   [][]Cell    `json:"rows"`
-	}{Layout: layoutJSON{encodeFields(l.Fields), l.Key, l.Note, l.Estimate}, Rows: [][]Cell{}}
+		// More says whether to ask for another page. Cursor, when set, goes back with it.
+		More   bool   `json:"more"`
+		Cursor string `json:"cursor,omitempty"`
+	}{Layout: layoutJSON{encodeFields(l.Fields), l.Key, l.Note, l.Estimate, shapeNames[l.Shape]}, Rows: [][]Cell{}}
 	if out.Layout.Key == nil {
 		out.Layout.Key = []string{}
 	}
@@ -600,6 +617,8 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 			out.Fields = encodeFields(f.Schema.Fields)
 		case f.Batch != nil:
 			out.Rows = append(out.Rows, encodeRows(f.Batch)...)
+		case f.Done != nil:
+			out.Cursor = f.Done.Cursor
 		}
 		return nil
 	})
@@ -611,6 +630,7 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	out.More = engine.MorePages(l, len(out.Rows), q.Limit, out.Cursor)
 	writeJSON(w, http.StatusOK, out)
 }
 

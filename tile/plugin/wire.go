@@ -55,6 +55,9 @@ type Facets struct {
 type HandshakeRequest struct {
 	APIVersion int `json:"api_version"`
 	Protocol   int `json:"protocol"`
+	// TessVersion is the host's version, for logs. The host itself checks the manifest's
+	// MinTess and MaxTess.
+	TessVersion string `json:"tess_version,omitempty"`
 }
 
 type HandshakeReply struct {

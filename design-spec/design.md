@@ -1,6 +1,6 @@
 # Tessera: Architecture and Design
 
-Status: in implementation since November 2026. Progress is in [task.md](task.md), and measurements are in [spike-results.md](spike-results.md).
+Status: in implementation since November 2026. Progress is in [task.md](task.md), measurements are in [spike-results.md](spike-results.md), and open contract questions for document and key-value databases are in [contract-review.md](contract-review.md).
 The plugin contract is [tile/tile.go](../tile/tile.go). It holds only what is built so far, so facets this document describes that are not yet in the code arrive as they are implemented.
 
 ## Decisions at a glance
@@ -169,6 +169,10 @@ type Value struct {
 
 Optional features are separate facets (`Browser`, `Editor`, `Actions`, `Explainer`, `Insight`, `BulkIO`), discovered by type assertion and advertised in `Capabilities`. New features become new facets, so existing plugins keep working.
 
+Transactions and schema changes are reported by each tile's `Language` through `Classification.Tx` and `Classification.Schema`. The engine never matches verbs, so the same console tracks SQL `BEGIN`/`COMMIT` and Redis `MULTI`/`EXEC`. An analytical database leaves out the `tx.*` capabilities, and front-ends then show no transaction state.
+
+Browsing pages by key (`After`), by count (`Offset`), or by a server cursor (`Layout.Paging = PagingCursor`, as `SCAN` does). Documents arrive as `ShapeDocument` with each document as one `KindJSON` value, and key-value records as `ShapeKeyValue`, so every front-end can still show them as a table.
+
 **Capabilities** are namespaced strings (`tx.ddl`, `data.ttl`, `admin.users`). They are evaluated after connecting, because they depend on server version and topology. Each carries a note, so the UI can say why something is unavailable ("needs a replica set") instead of hiding it. Unknown capabilities are ignored, which keeps old hosts and new plugins compatible.
 
 ### Mapping to the five reference databases
@@ -214,6 +218,7 @@ The hardest fit is Redis, because a key's edit form depends on its type. `Change
 - One JSON object per line. A request is `{"id","method","params"}`, a response `{"id","result"}` or `{"id","error"}`, and `{"cancel":id}` cancels a request. Either side may call the other, and ids are per sender, so a plugin can call back for secrets while the host waits on it. Tile types travel in their `encoding/json` form. Because it is plain JSON, a plugin can be written in any language.
 - Methods mirror the Go interfaces (`tile.open`, `conn.session`, `session.execute`, `stream.next`, `lang.classify`, and so on), with conns, sessions, and streams named by handles. Optional facets cannot be found by type assertion across a process, so the plugin reports them at handshake, open, and session time, and the host returns values whose type assertions match.
 - `tile.APIVersion` and a protocol revision are checked at handshake. A mismatch is refused with a clear message.
+- The JSON names come from explicit tags on the `tile` types, pinned by `TestWireNames`, so renaming a Go field never changes the protocol.
 - Streams stay pull-based: one `stream.next` call per frame, so not calling it is still the backpressure. The host checks frame order and that each batch holds rows times fields cells, so a faulty plugin cannot confuse the engine.
 - Cancel crosses the boundary. A cancelled host context sends `cancel`, the plugin cancels that call's context, and the host waits a short grace period so the server-side cancel finishes. A stream's context lives until the stream is closed, not just for the `session.execute` call.
 - Messages are capped at 64 MiB. Error and warning text from a plugin is stripped of control characters before it can reach a terminal.
@@ -252,10 +257,10 @@ Installing:
 1. Check the name: lowercase, at most 32 characters, not a built-in tile, not already installed unless `--force`.
 2. Fetch the descriptor (1 MiB cap) and signature. Only https; a redirect to anything else is refused, and so are URLs with credentials.
 3. Verify the signature against `[plugins.trusted_keys]`. A signature that matches no trusted key is refused even with `--allow-unsigned`, because it means tampering or the wrong key. A missing signature needs `--allow-unsigned`. A `--sha256` pin can be added either way.
-4. Check the descriptor's name matches the name asked for, its API version matches, and a build exists for this platform.
+4. Check the descriptor's name matches the name asked for, its API version matches, its `min_tess` and `max_tess` include this tess, and a build exists for this platform.
 5. Show the name, version, source, binary URL, hash, and signer, say that the plugin is not sandboxed, and ask. Without a terminal, `--yes` is required.
 6. Download into a staging directory under the plugin directory (512 MiB cap), hashing as it goes, and refuse a mismatch.
-7. Start it once to read its manifest, and refuse it if its tile ID differs from its name.
+7. Start it once to read its manifest, and refuse it if its tile ID differs from its name or its own `min_tess` and `max_tess` exclude this tess.
 8. Write `plugin.json` with the pinned hash and manifest, then rename the staging directory into place.
 
 Installed plugins live in `<config dir>/plugins/NAME/`, inside the `0700` config directory.
@@ -276,6 +281,8 @@ A separate process is not a sandbox: a plugin runs with the user's OS privileges
 - Landlock and seccomp on Linux, and AppContainer on Windows, are possible later hardening. They are not assumed here.
 
 **Versioning:**
+
+- A plugin states the tess versions it works with as `min_tess` and `max_tess`, both optional and inclusive, in its descriptor and again in its manifest. tess checks them at install, skips an installed plugin whose recorded bounds exclude it, and checks the binary's own bounds at every start. A development build counts as newer than every release. A maximum blocks later releases that would have worked, so publishers should prefer a minimum alone.
 
 - Within a major version, only additions: new facets, capabilities, methods, and optional fields.
 - Tiles declare features through capabilities and facets, not through version checks.

@@ -123,7 +123,7 @@ func (a *App) pluginInstall(args []string) error {
 	if err != nil {
 		return err
 	}
-	in := &plugins.Installer{Root: root, TrustedKeys: ps.TrustedKeys, Sources: ps.Sources, Indexes: ps.Indexes}
+	in := &plugins.Installer{Root: root, TrustedKeys: ps.TrustedKeys, Sources: ps.Sources, Indexes: ps.Indexes, TessVersion: a.Version}
 	for _, t := range a.Tiles {
 		in.Builtins = append(in.Builtins, t.Manifest().ID)
 	}
@@ -140,6 +140,9 @@ func (a *App) pluginInstall(args []string) error {
 	}
 	if p.Descriptor.Homepage != "" {
 		fmt.Fprintf(w, "homepage  %s\n", oneLine(p.Descriptor.Homepage))
+	}
+	if d := p.Descriptor; d.MinTess != "" || d.MaxTess != "" {
+		fmt.Fprintf(w, "for tess  %s to %s\n", orAny(oneLine(d.MinTess)), orAny(oneLine(d.MaxTess)))
 	}
 	fmt.Fprintf(w, "source    %s\n", oneLine(p.Source))
 	fmt.Fprintf(w, "binary    %s\n", oneLine(p.From))
@@ -160,6 +163,13 @@ func (a *App) pluginInstall(args []string) error {
 	fmt.Fprintf(a.Stdout, "installed %s %s (%s); add a profile with: tess profile add NAME --tile %s\n",
 		rec.Name, rec.Version, rec.Manifest.Name, rec.Name)
 	return nil
+}
+
+func orAny(s string) string {
+	if s == "" {
+		return "any"
+	}
+	return s
 }
 
 // oneLine keeps text from a descriptor to one line of printable characters.

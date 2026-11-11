@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arunksoman/tessera/internal/version"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -111,17 +112,27 @@ func writeRecord(dir string, r Record) error {
 	return os.WriteFile(filepath.Join(dir, recordFile), b, 0o600)
 }
 
-// Load returns a tile for each installed plugin, skipping any that clash with a built-in tile
-// or fail to read. Processes start only when a connection opens. Call Close on each when done.
-func Load(root string, builtins []string) ([]*Tile, []error) {
+// Load returns a tile for each installed plugin, skipping any that clash with a built-in tile,
+// do not support tess version tess, or fail to read. Processes start only when a connection
+// opens. Call Close on each when done.
+func Load(root string, builtins []string, tess string) ([]*Tile, []error) {
+	if tess == "" {
+		tess = version.Dev
+	}
 	recs, errs := List(root)
 	var out []*Tile
 	for _, r := range recs {
-		if err := checkName(r.Name, builtins); err != nil {
+		err := checkName(r.Name, builtins)
+		if err == nil {
+			if err = version.Supports(tess, r.Manifest.MinTess, r.Manifest.MaxTess); err != nil {
+				err = fmt.Errorf("%w; install a matching version with tess plugin install %s --force", err, r.Name)
+			}
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("plugin %s skipped: %w", r.Name, err))
 			continue
 		}
-		out = append(out, &Tile{rec: r, dir: root})
+		out = append(out, &Tile{rec: r, dir: root, tess: tess})
 	}
 	return out, errs
 }

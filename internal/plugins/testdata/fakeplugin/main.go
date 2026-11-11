@@ -25,9 +25,14 @@ func main() {
 
 type fake struct{ id string }
 
+// Manifest needs tess 99.0.0 when the plugin's name starts with "future".
 func (f fake) Manifest() tile.Manifest {
-	return tile.Manifest{ID: f.id, Name: "Fake " + f.id, APIVersion: tile.APIVersion,
+	m := tile.Manifest{ID: f.id, Name: "Fake " + f.id, APIVersion: tile.APIVersion, Version: "1.0.0",
 		ConnForm: tile.Form{Fields: []tile.FormField{{Name: "host", Label: "Host", Type: "text"}}}}
+	if strings.HasPrefix(f.id, "future") {
+		m.MinTess = "99.0.0"
+	}
+	return m
 }
 
 // ConfigWarnings reports what a plugin could learn from its environment.

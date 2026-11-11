@@ -48,6 +48,7 @@ type browse struct {
 	gen       int // bumped on reload, so a stale page is dropped
 	loading   bool
 	exhausted bool
+	cursor    string // where the next page starts under cursor paging
 }
 
 func (b *browse) editable() bool { return len(b.layout.Key) > 0 }

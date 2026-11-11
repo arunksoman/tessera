@@ -625,3 +625,11 @@ func TestGridCountsReadNaturally(t *testing.T) {
 		t.Fatal(count(1, "row"), count(2, "row"), count(0, "row"))
 	}
 }
+
+func TestVersionIsShown(t *testing.T) {
+	a := start(t, newFakeDB(1), setup{version: "1.2.3"})
+	a.see("Tessera 1.2.3")
+	a.keys("esc") // no profiles yet, so the new-connection form is open
+	a.keys("f1")
+	a.see("Help · tess 1.2.3")
+}

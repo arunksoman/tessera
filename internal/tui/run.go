@@ -40,11 +40,12 @@ type (
 		err error
 	}
 	pageDoneMsg struct {
-		g    *grid
-		t    *tab
-		gen  int
-		rows int
-		err  error
+		g      *grid
+		t      *tab
+		gen    int
+		rows   int
+		cursor string
+		err    error
 	}
 	askMsg struct {
 		p     engine.Prompt
@@ -461,24 +462,28 @@ func (m *Model) loadPage(t *tab, g *grid) tea.Cmd {
 	t.started = m.now()
 	t.err = ""
 	b.loading = true
-	q := tile.BrowseQuery{
-		Sort: slices.Clone(b.sort), Filter: slices.Clone(b.filter),
-		Offset: int64(len(g.rows)), Limit: browsePage,
-	}
+	var last []tile.Value
 	if len(g.rows) > 0 {
-		q.After = g.rows[len(g.rows)-1]
+		last = g.rows[len(g.rows)-1]
 	}
+	q := engine.PageQuery(b.layout, tile.BrowseQuery{
+		Sort: slices.Clone(b.sort), Filter: slices.Clone(b.filter), Limit: browsePage,
+	}, last, int64(len(g.rows)), b.cursor)
 	cs, gen, ref, layout := t.cs, b.gen, b.ref, b.layout
 	m.spawn(func() {
 		rows := 0
+		cursor := ""
 		err := cs.conn.Browse(ctx, ref, layout, q, func(f tile.Frame) error {
 			if f.Batch != nil {
 				m.send(rowsMsg{g: g, gen: gen, rows: copyRows(f.Batch, len(layout.Fields))})
 				rows += f.Batch.Rows
 			}
+			if f.Done != nil {
+				cursor = f.Done.Cursor
+			}
 			return nil
 		})
-		m.send(pageDoneMsg{g: g, t: t, gen: gen, rows: rows, err: err})
+		m.send(pageDoneMsg{g: g, t: t, gen: gen, rows: rows, cursor: cursor, err: err})
 	})
 	return tick()
 }
@@ -499,7 +504,8 @@ func (m *Model) onPageDone(msg pageDoneMsg) tea.Cmd {
 		g.browse.exhausted = true
 		return nil
 	}
-	g.browse.exhausted = msg.rows < browsePage
+	g.browse.cursor = msg.cursor
+	g.browse.exhausted = !engine.MorePages(g.browse.layout, msg.rows, browsePage, msg.cursor)
 	if len(g.rows) >= maxGridRows {
 		g.browse.exhausted = true
 		g.truncated = true
@@ -513,6 +519,7 @@ func (m *Model) onPageDone(msg pageDoneMsg) tea.Cmd {
 func (m *Model) reload(t *tab, g *grid) tea.Cmd {
 	g.browse.gen++
 	g.browse.exhausted = false
+	g.browse.cursor = ""
 	g.rows = nil
 	g.pending = map[[2]int]tile.Value{}
 	g.top = 0

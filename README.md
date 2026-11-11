@@ -129,7 +129,7 @@ tess plugin keygen --out acme.key     # prints the public key users trust
 tess plugin sign --key acme.key tessera-plugin.json
 ```
 
-The descriptor format and protocol are in [design.md section 3](design-spec/design.md#3-plugin-system).
+Set `min_tess` in the descriptor and `MinTess` in the manifest to the oldest tess your plugin works with; tess refuses it on older releases. The descriptor format and protocol are in [design.md section 3](design-spec/design.md#3-plugin-system).
 
 ### Secrets
 

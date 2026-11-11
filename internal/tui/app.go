@@ -76,6 +76,7 @@ type Model struct {
 	e       *engine.Engine
 	mgr     *engine.Manager
 	initial string
+	version string // shown in the status line and help
 
 	ctx     context.Context
 	stop    context.CancelFunc
@@ -149,9 +150,11 @@ func (m *Model) spawn(f func()) {
 	}()
 }
 
-// Run starts the terminal program and returns when the user quits.
-func Run(e *engine.Engine, profile string) error {
+// Run starts the terminal program and returns when the user quits. version is shown in the
+// status line and help.
+func Run(e *engine.Engine, profile, version string) error {
 	m := New(e, profile)
+	m.version = version
 	defer m.Close()
 	_, err := tea.NewProgram(m).Run()
 	return err
@@ -556,7 +559,7 @@ func (m *Model) banner() string {
 
 func (m *Model) tabBar() string {
 	if len(m.tabs) == 0 {
-		return lipgloss.NewStyle().MaxWidth(m.width).Render(m.th.bold.Render("Tessera") + m.th.muted.Render("  no connection. Alt+C connects, F1 shows help"))
+		return lipgloss.NewStyle().MaxWidth(m.width).Render(m.th.bold.Render("Tessera") + m.th.muted.Render(m.versionLabel()+"  no connection. Alt+C connects, F1 shows help"))
 	}
 	var b strings.Builder
 	used := 0
@@ -581,6 +584,14 @@ func (m *Model) tabBar() string {
 		}
 	}
 	return b.String()
+}
+
+// versionLabel is " " and the version, or nothing when the version is unknown.
+func (m *Model) versionLabel() string {
+	if m.version == "" {
+		return ""
+	}
+	return " " + m.version
 }
 
 func (m *Model) statusLine() string {

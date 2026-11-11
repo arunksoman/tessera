@@ -136,7 +136,7 @@ func TestInstallSignedAndRun(t *testing.T) {
 		t.Fatalf("record = %+v", rec)
 	}
 
-	tiles, errs := Load(in.Root, in.Builtins)
+	tiles, errs := Load(in.Root, in.Builtins, "")
 	if len(errs) > 0 || len(tiles) != 1 {
 		t.Fatalf("load = %v, %v", tiles, errs)
 	}
@@ -199,7 +199,7 @@ func TestTamperedBinaryDoesNotRun(t *testing.T) {
 	if err := Verify(in.Root, "redis"); !errors.Is(err, errHash) {
 		t.Fatalf("verify = %v", err)
 	}
-	tiles, _ := Load(in.Root, in.Builtins)
+	tiles, _ := Load(in.Root, in.Builtins, "")
 	_, err = tiles[0].Open(context.Background(), tile.ConnConfig{}, tile.Env{})
 	if err == nil || !strings.Contains(err.Error(), "hash") {
 		t.Fatalf("open of a tampered plugin = %v", err)
@@ -396,7 +396,7 @@ func TestLoadSkipsBuiltinNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A later tess may build in a tile with the same name; the built-in wins.
-	tiles, errs := Load(in.Root, []string{"pgx"})
+	tiles, errs := Load(in.Root, []string{"pgx"}, "")
 	if len(tiles) != 0 || len(errs) != 1 {
 		t.Fatalf("tiles %v, errs %v", tiles, errs)
 	}
@@ -416,5 +416,59 @@ func TestSignFile(t *testing.T) {
 	sig, _ := os.ReadFile(desc + ".sig")
 	if who, err := verify(map[string]string{"me": pub}, b, sig); err != nil || who != "me" {
 		t.Fatalf("%q %v", who, err)
+	}
+}
+
+func TestDescriptorTessBounds(t *testing.T) {
+	r := newRelease(t)
+	in := r.installer(t)
+	in.TessVersion = "0.3.0"
+	for _, c := range []struct {
+		min, max string
+		want     string
+	}{
+		{"0.4.0", "", "needs tess 0.4.0 or newer"},
+		{"", "0.2.9", "only up to tess 0.2.9"},
+		{"soon", "", "not a version"},
+	} {
+		src := r.publish(t, "redis", true, func(d *Descriptor) { d.MinTess, d.MaxTess = c.min, c.max })
+		if _, err := in.Resolve(context.Background(), "redis", Options{From: src}); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("min %q max %q: err = %v", c.min, c.max, err)
+		}
+	}
+	src := r.publish(t, "redis", true, func(d *Descriptor) { d.MinTess, d.MaxTess = "0.3.0", "0.3.0" })
+	if _, err := in.Resolve(context.Background(), "redis", Options{From: src}); err != nil {
+		t.Fatalf("bounds are inclusive: %v", err)
+	}
+}
+
+// The binary's own manifest is checked too, at install and again at each start, since the
+// descriptor could be wrong and tess could change after install.
+func TestManifestTessBounds(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "build")
+	os.WriteFile(bin, fakeBinary, 0o700)
+	in := &Installer{Root: t.TempDir(), TessVersion: "0.3.0"}
+	if _, err := install(t, in, "futuredb", Options{From: bin, AllowUnsigned: true}); err == nil || !strings.Contains(err.Error(), "needs tess 99.0.0") {
+		t.Fatalf("install err = %v", err)
+	}
+	// A development build is newer than any release, so it installs.
+	in.TessVersion = ""
+	if _, err := install(t, in, "futuredb", Options{From: bin, AllowUnsigned: true}); err != nil {
+		t.Fatal(err)
+	}
+	tiles, errs := Load(in.Root, nil, "0.3.0")
+	if len(tiles) != 0 || len(errs) != 1 || !strings.Contains(errs[0].Error(), "99.0.0") {
+		t.Fatalf("load on an old tess: %v %v", tiles, errs)
+	}
+	tiles, errs = Load(in.Root, nil, "")
+	if len(tiles) != 1 || len(errs) != 0 {
+		t.Fatalf("load on dev: %v %v", tiles, errs)
+	}
+	// If the record were edited to hide the bound, the binary still refuses at start.
+	tl := tiles[0]
+	tl.tess = "0.3.0"
+	defer tl.Close()
+	if _, err := tl.Open(context.Background(), tile.ConnConfig{}, tile.Env{}); err == nil || !strings.Contains(err.Error(), "99.0.0") {
+		t.Fatalf("start err = %v", err)
 	}
 }

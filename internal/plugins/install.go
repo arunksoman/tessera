@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arunksoman/tessera/internal/version"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -41,6 +42,11 @@ type Descriptor struct {
 	APIVersion  int    `json:"api_version"`
 	Description string `json:"description,omitempty"`
 	Homepage    string `json:"homepage,omitempty"`
+	// MinTess and MaxTess bound the tess versions this release works with, both inclusive,
+	// and are checked before anything is downloaded. The binary's manifest repeats them and
+	// is checked again at every start. Prefer MinTess alone.
+	MinTess string `json:"min_tess,omitempty"`
+	MaxTess string `json:"max_tess,omitempty"`
 	// Artifacts maps "GOOS/GOARCH" to a binary. A relative URL is resolved against the
 	// descriptor's own location.
 	Artifacts map[string]Artifact `json:"artifacts"`
@@ -83,6 +89,7 @@ type Installer struct {
 	Sources     map[string]string // plugin name to source
 	Indexes     []string          // https URLs of indexes
 	Builtins    []string          // tile IDs a plugin may not take
+	TessVersion string            // this tess, checked against a plugin's bounds
 	// HTTP is the client for downloads. Redirects are always limited to https.
 	HTTP *http.Client
 	// Platform defaults to the running GOOS/GOARCH.
@@ -249,6 +256,13 @@ func (in *Installer) fetch(ctx context.Context, l location, max int64) ([]byte, 
 	return b, nil
 }
 
+func (in *Installer) tess() string {
+	if in.TessVersion == "" {
+		return version.Dev
+	}
+	return in.TessVersion
+}
+
 func (in *Installer) platform() string {
 	if in.Platform != "" {
 		return in.Platform
@@ -366,6 +380,9 @@ func (in *Installer) Resolve(ctx context.Context, name string, opt Options) (*Pe
 	if d.APIVersion != tile.APIVersion {
 		return nil, fmt.Errorf("plugin %s %s needs tile API %d, this tess has %d", name, d.Version, d.APIVersion, tile.APIVersion)
 	}
+	if err := version.Supports(in.tess(), d.MinTess, d.MaxTess); err != nil {
+		return nil, fmt.Errorf("plugin %s %s %w", name, d.Version, err)
+	}
 	a, ok := d.Artifacts[in.platform()]
 	if !ok {
 		return nil, fmt.Errorf("plugin %s %s has no build for %s", name, d.Version, in.platform())
@@ -431,13 +448,16 @@ func (in *Installer) Install(ctx context.Context, p *Pending) (Record, error) {
 	if err := in.download(ctx, p.artifact, bin, rec.SHA256); err != nil {
 		return rec, err
 	}
-	proc, h, err := launch(ctx, bin, stage)
+	proc, h, err := launch(ctx, bin, stage, in.tess())
 	if err != nil {
 		return rec, fmt.Errorf("checking plugin %s: %w", p.Name, err)
 	}
 	proc.stop()
 	if h.Manifest.ID != p.Name {
 		return rec, fmt.Errorf("plugin binary for %q calls itself %q", p.Name, h.Manifest.ID)
+	}
+	if err := version.Supports(in.tess(), h.Manifest.MinTess, h.Manifest.MaxTess); err != nil {
+		return rec, fmt.Errorf("plugin %s %w", p.Name, err)
 	}
 	rec.Manifest, rec.ConfigWarner = h.Manifest, h.Facets.ConfigWarner
 	if err := writeRecord(stage, rec); err != nil {

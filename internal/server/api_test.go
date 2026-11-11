@@ -266,10 +266,47 @@ type browseOut struct {
 		Key      []string   `json:"key"`
 		Note     string     `json:"note"`
 		Estimate int64      `json:"estimate"`
+		Shape    string     `json:"shape"`
 	} `json:"layout"`
 	Fields []fieldOut `json:"fields"`
 	Rows   [][]any    `json:"rows"`
+	More   bool       `json:"more"`
+	Cursor string     `json:"cursor"`
 	Error  string     `json:"error"`
+}
+
+func TestBrowseCursorPages(t *testing.T) {
+	f := newFixture(t, store.Profile{Name: "dev"})
+	f.login()
+	keys := []map[string]string{{"kind": "db", "name": "0"}, {"kind": "keys", "name": "keys"}}
+	var got []any
+	cursor := ""
+	for page := 0; ; page++ {
+		var b browseOut
+		if code := f.call("POST", "/api/conns/dev/browse", map[string]any{"ref": keys, "limit": 100, "cursor": cursor}, &b); code != 200 {
+			t.Fatalf("%d %+v", code, b)
+		}
+		if b.Layout.Shape != "keyvalue" {
+			t.Fatalf("shape = %q", b.Layout.Shape)
+		}
+		for _, r := range b.Rows {
+			got = append(got, r[0])
+		}
+		// Pages are short (3 of 100 asked), yet more follow until the cursor runs out.
+		if !b.More {
+			if b.Cursor != "" {
+				t.Fatal("no more pages but a cursor")
+			}
+			break
+		}
+		cursor = b.Cursor
+		if page > 100 {
+			t.Fatal("cursor never ended")
+		}
+	}
+	if len(got) != 250 || got[249] != "250" {
+		t.Fatalf("keys = %v", got)
+	}
 }
 
 func TestBrowsePages(t *testing.T) {
@@ -585,5 +622,17 @@ func TestCellValueWithoutKindIsNotNull(t *testing.T) {
 	}
 	if v := (Cell{Null: true}).value(tile.KindText); v.Kind != tile.KindNull {
 		t.Fatal("null lost")
+	}
+}
+
+func TestVersion(t *testing.T) {
+	f := newFixtureAt(t, Config{Version: "1.2.3"})
+	if code := f.call("GET", "/api/version", nil, nil); code != http.StatusUnauthorized && code != http.StatusForbidden {
+		t.Fatalf("version before login: %d", code)
+	}
+	f.login()
+	var v struct{ Version string }
+	if code := f.call("GET", "/api/version", nil, &v); code != 200 || v.Version != "1.2.3" {
+		t.Fatalf("%d %+v", code, v)
 	}
 }
