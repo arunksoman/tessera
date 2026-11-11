@@ -70,6 +70,7 @@ func TestConsoleTracksTransactions(t *testing.T) {
 		{"ROLLBACK TO s", true},
 		{"COMMIT", false},
 		{"START TRANSACTION", true},
+		{"COMMIT AND CHAIN", true},
 		{"rollback", false},
 	}
 	for _, s := range steps {
@@ -398,4 +399,95 @@ func (f *fakeTile) ConfigWarnings(cfg tile.ConnConfig) []string {
 		return []string{"weak"}
 	}
 	return nil
+}
+
+// kvLang is a key-value command language: one command per line, MULTI and EXEC bracket a
+// transaction, and nothing is SQL.
+type kvLang struct{}
+
+func (kvLang) ID() string { return "kv" }
+func (kvLang) Split(text string) []tile.Span {
+	var out []tile.Span
+	start := 0
+	for i := 0; i <= len(text); i++ {
+		if i == len(text) || text[i] == '\n' {
+			if i > start {
+				out = append(out, tile.Span{Start: start, End: i})
+			}
+			start = i + 1
+		}
+	}
+	return out
+}
+func (kvLang) Redact(s string) string { return s }
+func (kvLang) Classify(stmt string) tile.Classification {
+	verb := strings.ToUpper(strings.Fields(stmt)[0])
+	c := tile.Classification{Verb: verb, Risk: tile.RiskWrite}
+	switch verb {
+	case "GET":
+		c.Risk, c.ReadOnly = tile.RiskNone, true
+	case "MULTI":
+		c.Risk, c.ReadOnly, c.Tx = tile.RiskNone, true, tile.TxBegin
+	case "EXEC", "DISCARD":
+		c.Tx = tile.TxEnd
+	case "CREATE":
+		// A key-value CREATE is not DDL: only Schema says so.
+	}
+	return c
+}
+
+func TestConsoleTracksNonSQLTransactions(t *testing.T) {
+	fx := setup(t, store.Profile{})
+	fx.f.lang = kvLang{}
+	k := fx.conn.NewConsole()
+	defer k.Close()
+	for _, s := range []struct {
+		text string
+		inTx bool
+	}{
+		{"GET a", false},
+		{"BEGIN", false}, // not a transaction in this language
+		{"MULTI", true},
+		{"SET a 1\nCREATE x", true},
+		{"EXEC", false},
+	} {
+		if err := k.Run(context.Background(), s.text, RunOptions{}, discard); err != nil {
+			t.Fatal(err)
+		}
+		if k.InTx() != s.inTx {
+			t.Fatalf("after %q InTx = %v", s.text, k.InTx())
+		}
+	}
+	if fx.conn.IsDDL("CREATE x") {
+		t.Fatal("a non-SQL CREATE counted as DDL")
+	}
+}
+
+func TestPageQuery(t *testing.T) {
+	keyed := tile.Layout{Fields: []tile.Field{{Name: "id"}}, Key: []string{"id"}}
+	keyless := tile.Layout{Fields: []tile.Field{{Name: "id"}}}
+	cursored := tile.Layout{Fields: []tile.Field{{Name: "k"}}, Key: []string{"k"}, Paging: tile.PagingCursor}
+	last := []tile.Value{tile.Text("9")}
+	base := tile.BrowseQuery{Limit: 50, Offset: 7, Cursor: "stale", After: []tile.Value{tile.Text("x")}}
+
+	if q := PageQuery(keyed, base, nil, 0, ""); q.After != nil || q.Offset != 0 || q.Cursor != "" || q.Limit != 50 {
+		t.Fatalf("first keyed page = %+v", q)
+	}
+	if q := PageQuery(keyed, base, last, 9, ""); string(q.After[0].Raw) != "9" || q.Offset != 0 {
+		t.Fatalf("keyed = %+v", q)
+	}
+	if q := PageQuery(keyless, base, last, 9, ""); q.After != nil || q.Offset != 9 {
+		t.Fatalf("keyless = %+v", q)
+	}
+	if q := PageQuery(cursored, base, last, 9, "c2"); q.Cursor != "c2" || q.After != nil || q.Offset != 0 {
+		t.Fatalf("cursor = %+v", q)
+	}
+
+	if !MorePages(keyed, 50, 50, "") || MorePages(keyed, 49, 50, "") {
+		t.Fatal("keyset paging stops on a short page")
+	}
+	// A SCAN can return a short or empty page while keys remain.
+	if !MorePages(cursored, 0, 50, "17") || MorePages(cursored, 50, 50, "") {
+		t.Fatal("cursor paging stops only on an empty cursor")
+	}
 }

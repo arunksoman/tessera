@@ -225,7 +225,7 @@ func (m *Model) openHelp() tea.Cmd {
 		fmt.Fprintf(&b, "%-24s %s\n", label, a.title)
 	}
 	b.WriteString("\n" + strings.Join(paneHelp, "\n"))
-	m.push(newTextView("Help", b.String()))
+	m.push(newTextView("Help · tess"+m.versionLabel(), b.String()))
 	return nil
 }
 

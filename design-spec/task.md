@@ -58,6 +58,11 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 ### Tile contract
 
 - [x] Move `design-spec/tile-api-sketch.go` into `tile/`, marked `v0`
+- [x] Stable JSON tags on every contract type, pinned by a golden test, as the plugin wire format
+- [x] Language-reported transaction and schema effects (`Classification.Tx`, `Classification.Schema`) instead of SQL verbs in the engine
+- [x] Cursor paging for browse (`PagingCursor`), through the engine, TUI, and web API
+- [x] Document and key-value result conventions, and OLAP as the absence of `tx.*` capabilities
+- [ ] Resolve the open items in [contract-review.md](contract-review.md) before the first document or key-value tile ships
 - [x] Remove facets and types that neither SQL tile needs yet
 - [x] Build the `tiletest` conformance suite: streaming, cancel, read-only, tree paging, hostile identifiers
 - [x] Add browse and plan purity to `tiletest`, once those facets exist
@@ -76,6 +81,8 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Confirmation before install, https-only downloads and redirects, size caps, staged install, manifest check
 - [x] Allowlisted plugin environment, per-connection secret scoping, and plugins off by default in `tess serve`
 - [x] `tess plugin list` and `remove`, and `profile add --set` for plugin form fields
+- [x] Plugin `min_tess` and `max_tess` in the descriptor and manifest, checked at install, load, and every start
+- [x] Show the tess version in `tess version`, the TUI status line and help, and the web header; development builds show their commit
 - [ ] Meet the out-of-process throughput gate (protocol ceiling measured at about 517k one-column rows/s; see spike-results.md)
 - [ ] Carry `Env.Dial` and the `Completer` facet across the protocol
 - [ ] Refuse downgrades to an older signed version

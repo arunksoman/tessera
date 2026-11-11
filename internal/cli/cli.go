@@ -23,6 +23,7 @@ import (
 	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/store"
 	"github.com/arunksoman/tessera/internal/tui"
+	"github.com/arunksoman/tessera/internal/version"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -73,7 +74,7 @@ func (a *App) Run(args []string) int {
 	var err error
 	switch args[0] {
 	case "version", "--version":
-		fmt.Fprintf(a.Stdout, "tess %s\n", a.Version)
+		fmt.Fprintf(a.Stdout, "tess %s\n", version.Describe(a.Version))
 	case "help", "--help", "-h":
 		fmt.Fprint(a.Stdout, usage)
 	case "profile":
@@ -183,7 +184,7 @@ func (a *App) engine(st *store.Store, vault *secrets.Vault, server bool) (*engin
 	for i, t := range a.Tiles {
 		builtins[i] = t.Manifest().ID
 	}
-	loaded, errs := plugins.Load(plugins.Dir(st.Dir()), builtins)
+	loaded, errs := plugins.Load(plugins.Dir(st.Dir()), builtins, a.Version)
 	if server && len(loaded) > 0 {
 		if ps, err := st.PluginSettings(); err != nil || !ps.AllowInServer {
 			fmt.Fprintf(a.Stderr, "tess: %d plugin(s) not loaded: set allow_in_server under [plugins] in config.toml to use them in tess serve\n", len(loaded))
@@ -541,7 +542,7 @@ func (a *App) tui(args []string) error {
 	}
 	e, stop := a.engine(st, vault, false)
 	defer stop()
-	return tui.Run(e, profile)
+	return tui.Run(e, profile, version.Describe(a.Version))
 }
 
 func (a *App) audit(args []string) error {

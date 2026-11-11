@@ -48,7 +48,7 @@ func OutOfProcess(t *testing.T) tile.Tile {
 		cmd.Wait()
 		outR.Close()
 	})
-	h, err := c.Handshake(context.Background())
+	h, err := c.Handshake(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

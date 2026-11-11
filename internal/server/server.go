@@ -43,6 +43,8 @@ type Config struct {
 	Assets fs.FS
 	// Engine runs everything behind /api.
 	Engine *engine.Engine
+	// Version is shown in the web app.
+	Version string
 }
 
 // Server is one launch of tess serve.

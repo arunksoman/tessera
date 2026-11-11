@@ -37,6 +37,8 @@
 	let applying = $state(false);
 	let applyError = $state('');
 	let request = 0;
+	// The server's token for the next page, for stores that page by cursor rather than by key.
+	let cursor: string | undefined;
 
 	const profile = $derived(app.profile(tab.profile));
 	const production = $derived(profile?.env === 'production');
@@ -56,8 +58,9 @@
 				sort: sort ? [sort] : [],
 				filter: filters,
 				limit: PAGE,
-				after: more && layout?.key.length ? last : undefined,
-				offset: more && !layout?.key.length ? rows.length : 0
+				after: more && !cursor && layout?.key.length ? last : undefined,
+				offset: more && !cursor && !layout?.key.length ? rows.length : 0,
+				cursor: more ? cursor : undefined
 			});
 			if (id !== request) return;
 			layout = res.layout;
@@ -66,7 +69,8 @@
 				rows.length = 0;
 			}
 			for (const r of res.rows) rows.push(r);
-			done = res.rows.length < PAGE;
+			cursor = res.cursor;
+			done = !res.more;
 			version++;
 		} catch (e) {
 			if (id === request) error = (e as Error).message;

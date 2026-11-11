@@ -14,7 +14,7 @@ export type FormField = {
 	options?: string[];
 	default?: string;
 };
-export type Tile = { id: string; name: string; style: { Color: string; Glyph: string }; form: FormField[] };
+export type Tile = { id: string; name: string; style: { color?: string; glyph?: string }; form: FormField[] };
 
 export type Profile = {
 	name: string;
@@ -38,7 +38,8 @@ export type SaveProfile = {
 export type Saved = Profile & { connected: boolean; error?: string };
 
 export type TreeNode = { ref: Ref; kind: string; label: string; hasChildren: boolean; browsable: boolean };
-export type Layout = { fields: Field[]; key: string[]; note?: string; estimate: number };
+export type Shape = 'table' | 'document' | 'tree' | 'keyvalue' | 'scalar';
+export type Layout = { fields: Field[]; key: string[]; note?: string; estimate: number; shape: Shape };
 export type Filter = { field: string; op: string; value: Cell };
 export type BrowseRequest = {
 	ref: Ref;
@@ -46,9 +47,11 @@ export type BrowseRequest = {
 	filter?: Filter[];
 	after?: Cell[];
 	offset?: number;
+	cursor?: string;
 	limit?: number;
 };
-export type BrowseResult = { layout: Layout; fields: Field[]; rows: Cell[][] };
+// more says whether another page may follow; cursor, when set, is sent back to get it.
+export type BrowseResult = { layout: Layout; fields: Field[]; rows: Cell[][]; more: boolean; cursor?: string };
 
 export type Prompt = { statement: string; verb: string; reason: string; risk: string; env?: string };
 export type ExecEvent =
@@ -106,6 +109,7 @@ async function call<T>(method: string, path: string, body?: unknown, signal?: Ab
 const conn = (profile: string) => `/api/conns/${encodeURIComponent(profile)}`;
 
 export const api = {
+	version: () => call<{ version: string }>('GET', '/api/version'),
 	tiles: () => call<Tile[]>('GET', '/api/tiles'),
 	profiles: () => call<Profile[]>('GET', '/api/profiles'),
 	saveProfile: (name: string, p: SaveProfile) => call<Saved>('PUT', `/api/profiles/${encodeURIComponent(name)}`, p),

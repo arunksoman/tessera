@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -70,21 +68,20 @@ func (k *Console) ensureSession(ctx context.Context) error {
 	return nil
 }
 
-func (k *Console) track(stmt string, class tile.Classification) {
-	switch class.Verb {
-	case "BEGIN", "START":
+// track follows the language's account of each statement, so it works for any language with
+// transactions, and stays off for databases without them.
+func (k *Console) track(_ string, class tile.Classification) {
+	switch class.Tx {
+	case tile.TxBegin:
 		k.inTx.Store(true)
-	case "COMMIT", "END":
+		return
+	case tile.TxEnd:
 		k.inTx.Store(false)
-	case "ROLLBACK":
-		if !slices.Contains(strings.Fields(strings.ToUpper(stmt)), "TO") {
-			k.inTx.Store(false)
-		}
-	case "CREATE", "ALTER", "DROP", "RENAME", "TRUNCATE":
-		// Without transactional DDL the server commits implicitly.
-		if !k.c.conn.Capabilities()[tile.CapTxDDL].Supported {
-			k.inTx.Store(false)
-		}
+		return
+	}
+	// Without transactional DDL the server commits implicitly.
+	if class.Schema && k.inTx.Load() && !k.c.conn.Capabilities()[tile.CapTxDDL].Supported {
+		k.inTx.Store(false)
 	}
 }
 
@@ -106,7 +103,7 @@ func (c *Conn) StatementAt(text string, offset int) string {
 func (c *Conn) IsDDL(text string) bool {
 	lang := c.conn.Language()
 	for _, s := range lang.Split(text) {
-		if ddlVerbs[lang.Classify(text[s.Start:s.End]).Verb] {
+		if lang.Classify(text[s.Start:s.End]).Schema {
 			return true
 		}
 	}
@@ -134,6 +131,31 @@ func (c *Conn) Browse(ctx context.Context, ref tile.ObjectRef, l tile.Layout, q 
 		return err
 	}
 	return c.readOnly(ctx, req, sink)
+}
+
+// PageQuery fills in where the next browse page starts, from the rows already read: the last
+// row or a count under keyset paging, or the previous page's cursor under cursor paging.
+func PageQuery(l tile.Layout, q tile.BrowseQuery, last []tile.Value, read int64, cursor string) tile.BrowseQuery {
+	q.After, q.Offset, q.Cursor = nil, 0, ""
+	if l.Paging == tile.PagingCursor {
+		q.Cursor = cursor
+		return q
+	}
+	if last != nil && len(l.Key) > 0 {
+		q.After = last
+	} else {
+		q.Offset = read
+	}
+	return q
+}
+
+// MorePages reports whether a browse page that returned rows records, and ended with cursor,
+// may have a next page.
+func MorePages(l tile.Layout, rows, limit int, cursor string) bool {
+	if l.Paging == tile.PagingCursor {
+		return cursor != ""
+	}
+	return rows >= limit
 }
 
 func (c *Conn) readOnly(ctx context.Context, req tile.Request, sink func(tile.Frame) error) error {

@@ -5,8 +5,8 @@
 </script>
 
 <!-- Colour is never the only signal: the glyph names the database type too. -->
-<span class="mark tile-{t?.style.Color ?? 'slate'}" style:--size="{size}px" title={t?.name ?? tile} aria-hidden="true">
-	{t?.style.Glyph ?? '?'}
+<span class="mark tile-{t?.style.color ?? 'slate'}" style:--size="{size}px" title={t?.name ?? tile} aria-hidden="true">
+	{t?.style.glyph ?? '?'}
 </span>
 
 <style>

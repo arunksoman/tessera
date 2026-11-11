@@ -68,9 +68,6 @@ type Conn struct {
 
 const metaTTL = 5 * time.Minute
 
-// ddlVerbs change what the metadata cache holds.
-var ddlVerbs = map[string]bool{"CREATE": true, "ALTER": true, "DROP": true, "RENAME": true}
-
 func (e *Engine) Open(ctx context.Context, profile string) (*Conn, error) {
 	p, err := e.store.Profile(profile)
 	if err != nil {
@@ -225,7 +222,7 @@ func (c *Conn) runAll(ctx context.Context, sess tile.Session, stmts []string, cl
 			return err
 		}
 		ran(stmt, classes[i])
-		if !classes[i].ReadOnly && ddlVerbs[classes[i].Verb] && c.meta != nil {
+		if classes[i].Schema && c.meta != nil {
 			c.meta.Invalidate()
 		}
 	}

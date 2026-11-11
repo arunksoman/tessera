@@ -308,13 +308,19 @@ func (d Dialect) Classify(stmt string) tile.Classification {
 			continue
 		}
 		c := classifyOne(cur)
+		schema := worst.Schema || c.Schema
 		if first || c.Risk > worst.Risk {
 			worst = c
 		}
+		worst.Schema = schema
 		first = false
 	}
 	return worst
 }
+
+// schemaVerbs define objects rather than data. TRUNCATE is among them because, like DDL, it
+// commits implicitly where DDL is not transactional.
+var schemaVerbs = []string{"CREATE", "ALTER", "DROP", "RENAME", "TRUNCATE"}
 
 func classifyOne(toks []token) tile.Classification {
 	verbAt := slices.IndexFunc(toks, func(t token) bool { return t.kind == tokWord })
@@ -322,7 +328,10 @@ func classifyOne(toks []token) tile.Classification {
 		return tile.Classification{Verb: "", Risk: tile.RiskWrite, Reason: "unrecognised statement"}
 	}
 	verb := toks[verbAt].upper
-	c := tile.Classification{Verb: verb}
+	c := tile.Classification{Verb: verb, Schema: slices.Contains(schemaVerbs, verb)}
+	if isTxControl(toks) {
+		c.Tx = txEffect(toks)
+	}
 
 	switch verb {
 	case "DROP", "TRUNCATE":
@@ -401,6 +410,19 @@ func isTxControl(toks []token) bool {
 }
 
 var txWords = []string{"TRANSACTION", "WORK", "AND", "NO", "CHAIN"}
+
+// txEffect reads a plain transaction-control statement. AND CHAIN ends one transaction and
+// opens the next.
+func txEffect(toks []token) tile.TxEffect {
+	switch toks[0].upper {
+	case "BEGIN", "START":
+		return tile.TxBegin
+	}
+	if hasWord(toks, "CHAIN") && !hasWord(toks, "NO") {
+		return tile.TxBegin
+	}
+	return tile.TxEnd
+}
 
 func raise(c *tile.Classification, r tile.Risk, reason string) {
 	if r > c.Risk || c.Reason == "" {

@@ -173,3 +173,36 @@ func FuzzDialects(f *testing.F) {
 		}
 	})
 }
+
+func TestClassifyEffects(t *testing.T) {
+	cases := []struct {
+		d      Dialect
+		in     string
+		tx     tile.TxEffect
+		schema bool
+	}{
+		{Postgres, "BEGIN", tile.TxBegin, false},
+		{MySQL, "START TRANSACTION", tile.TxBegin, false},
+		{Postgres, "COMMIT", tile.TxEnd, false},
+		{MySQL, "rollback work", tile.TxEnd, false},
+		{Postgres, "END", tile.TxEnd, false},
+		{MySQL, "COMMIT AND CHAIN", tile.TxBegin, false},
+		{MySQL, "COMMIT AND NO CHAIN", tile.TxEnd, false},
+		{Postgres, "ROLLBACK TO s", tile.TxNone, false},
+		{MySQL, "BEGIN NOT ATOMIC SELECT 1; END", tile.TxNone, false},
+		{Postgres, "SELECT 1", tile.TxNone, false},
+		{Postgres, "CREATE TABLE t (a int)", tile.TxNone, true},
+		{MySQL, "ALTER TABLE t ADD b int", tile.TxNone, true},
+		{Postgres, "DROP VIEW v", tile.TxNone, true},
+		{MySQL, "RENAME TABLE a TO b", tile.TxNone, true},
+		{MySQL, "TRUNCATE t", tile.TxNone, true},
+		{Postgres, "INSERT INTO t VALUES (1)", tile.TxNone, false},
+		{Postgres, "SELECT 1; CREATE INDEX i ON t (a)", tile.TxNone, true},
+	}
+	for _, c := range cases {
+		got := c.d.Classify(c.in)
+		if got.Tx != c.tx || got.Schema != c.schema {
+			t.Errorf("%q: tx %v schema %v, want tx %v schema %v", c.in, got.Tx, got.Schema, c.tx, c.schema)
+		}
+	}
+}

@@ -206,7 +206,7 @@ func open(t *testing.T, c *Client) tile.Conn {
 
 func TestHandshake(t *testing.T) {
 	c, _ := pair(t, &fakeTile{})
-	h, err := c.Handshake(context.Background())
+	h, err := c.Handshake(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

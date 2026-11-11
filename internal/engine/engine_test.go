@@ -26,6 +26,7 @@ type fakeTile struct {
 	opens         int
 	pingErr       error
 	affected      *int64
+	lang          tile.Language // sqlish.Postgres when nil
 }
 
 func (f *fakeTile) Manifest() tile.Manifest { return tile.Manifest{ID: "fake", Name: "Fake"} }
@@ -46,7 +47,12 @@ func (fakeConn) Capabilities() tile.Capabilities { return tile.Capabilities{} }
 func (fakeConn) Ping(context.Context) error      { return nil }
 func (c fakeConn) Close() error                  { c.f.closedConn++; return nil }
 func (fakeConn) Tree() tile.ObjectTree           { return nil }
-func (fakeConn) Language() tile.Language         { return sqlish.Postgres.Language() }
+func (c fakeConn) Language() tile.Language {
+	if c.f.lang != nil {
+		return c.f.lang
+	}
+	return sqlish.Postgres.Language()
+}
 func (c fakeConn) Session(_ context.Context, opt tile.SessionOptions) (tile.Session, error) {
 	c.f.readOnly = append(c.f.readOnly, opt.ReadOnly)
 	return fakeSession{c.f}, nil

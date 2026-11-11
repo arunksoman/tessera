@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -103,15 +104,26 @@ func (c fakeConn) Session(context.Context, tile.SessionOptions) (tile.Session, e
 
 func (fakeConn) Layout(_ context.Context, ref tile.ObjectRef) (tile.Layout, error) {
 	l := tile.Layout{Fields: []tile.Field{{Name: "id", Kind: tile.KindInt}, {Name: "name", Kind: tile.KindText}}, Estimate: 1000}
-	if ref.Path[len(ref.Path)-1].Name == "items" {
+	switch ref.Path[len(ref.Path)-1].Name {
+	case "items":
 		l.Key = []string{"id"}
-	} else {
+	case "keys":
+		// A key-value store pages by a server cursor, as SCAN does.
+		l.Key, l.Paging, l.Shape = []string{"id"}, tile.PagingCursor, tile.ShapeKeyValue
+	default:
 		l.Note = "no primary key"
 	}
 	return l, nil
 }
 
 func (fakeConn) BrowseRequest(ref tile.ObjectRef, l tile.Layout, q tile.BrowseQuery) (tile.Request, error) {
+	if l.Paging == tile.PagingCursor {
+		c := q.Cursor
+		if c == "" {
+			c = "0"
+		}
+		return tile.Request{Text: fmt.Sprintf("SCAN %s COUNT %d", c, q.Limit)}, nil
+	}
 	return fakeDialect.Select(ref, l, q)
 }
 
@@ -160,6 +172,19 @@ func (s fakeSession) Execute(ctx context.Context, req tile.Request) (tile.Result
 	case strings.HasPrefix(req.Text, "BEGIN"), strings.HasPrefix(req.Text, "COMMIT"),
 		strings.HasPrefix(req.Text, "ROLLBACK"), strings.HasPrefix(req.Text, "DROP"), strings.HasPrefix(req.Text, "DELETE"):
 		st.control = true
+	case strings.HasPrefix(req.Text, "SCAN "):
+		// Returns at most 3 keys per call whatever the count, and a cursor while more remain.
+		var start, count int
+		fmt.Sscanf(req.Text, "SCAN %d COUNT %d", &start, &count)
+		st.fields = []tile.Field{{Name: "id", Kind: tile.KindInt}, {Name: "name", Kind: tile.KindText}}
+		st.width = 2
+		end := min(start+3, len(s.db.rows))
+		for i := start; i < end; i++ {
+			st.cells = append(st.cells, tile.Value{Kind: tile.KindInt, Raw: []byte(s.db.rows[i][0])}, tile.Text(s.db.rows[i][1]))
+		}
+		if end < len(s.db.rows) {
+			st.cursor = strconv.Itoa(end)
+		}
 	case strings.HasPrefix(req.Text, "BYTES"):
 		st.fields = []tile.Field{{Name: "b", Kind: tile.KindBytes}}
 		st.cells = []tile.Value{{Kind: tile.KindBytes, Raw: []byte{0xff, 0x00}}, {Kind: tile.KindNull}}
@@ -194,6 +219,7 @@ type fakeStream struct {
 	affected int64
 	step     int
 	sent     int
+	cursor   string
 }
 
 func (s *fakeStream) Close() error { return nil }
@@ -228,7 +254,7 @@ func (s *fakeStream) Next(context.Context) (tile.Frame, error) {
 	}
 	if s.sent == total {
 		s.sent++
-		return tile.Frame{Done: &tile.ResultSummary{}}, nil
+		return tile.Frame{Done: &tile.ResultSummary{Cursor: s.cursor}}, nil
 	}
 	return tile.Frame{}, io.EOF
 }

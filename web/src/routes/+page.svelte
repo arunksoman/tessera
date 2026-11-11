@@ -65,6 +65,7 @@
 				<i></i><i></i><i></i><i class="n"></i><i></i><i class="n"></i><i class="n"></i><i></i><i class="n"></i>
 			</span>
 			<strong>Tessera</strong>
+			{#if app.version}<span class="muted version" title="tess version">{app.version}</span>{/if}
 			<span class="spacer"></span>
 			<label class="theme">
 				<span class="muted">Theme</span>
