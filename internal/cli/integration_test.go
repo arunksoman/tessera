@@ -71,6 +71,31 @@ func TestEndToEndStdinAndScript(t *testing.T) {
 	})
 }
 
+// A procedure body holds semicolons, so MySQL scripts change the terminator with DELIMITER,
+// which tess applies itself and never sends.
+func TestEndToEndDelimiter(t *testing.T) {
+	each(t, nil, func(t *testing.T) {
+		if strings.HasPrefix(t.Name(), "TestEndToEndDelimiter/postgres") {
+			t.Skip("DELIMITER is a mysql client command")
+		}
+		script := `DROP PROCEDURE IF EXISTS cli_delim;
+DELIMITER $$
+CREATE PROCEDURE cli_delim()
+BEGIN
+  SELECT 41 AS a;
+  SELECT 42 AS b;
+END$$
+DELIMITER ;
+CALL cli_delim();
+DROP PROCEDURE cli_delim;
+`
+		r := tess(script, "query", "-c", "dev", "--yes")
+		if r.code != 0 || !strings.Contains(r.stdout, "41") {
+			t.Fatalf("%+v", r)
+		}
+	})
+}
+
 func TestEndToEndSafety(t *testing.T) {
 	each(t, nil, func(t *testing.T) {
 		exec := func(args ...string) result { return tess("", append([]string{"query", "-c", "dev"}, args...)...) }

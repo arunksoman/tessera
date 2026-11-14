@@ -153,19 +153,25 @@ func FuzzDialects(f *testing.F) {
 	for _, s := range []string{
 		"SELECT 1; DROP TABLE t", "/*! DROP */", "$a$ $$ $a$", "E'\\''", "'", "\"", "`", "/*", "--", "#",
 		"$", "$$", "$a", "/*M!", "WITH (", ")))", "EXPLAIN (", "PASSWORD", "IDENTIFIED BY '", "\x00\xff",
+		"DELIMITER $$\nSELECT 1; DROP TABLE t$$", "delimiter ;;\nEND;;\nDELIMITER ;\n", "DELIMITER '", "DELIMITER \\",
+		"SELECT 1; DELIMITER //\n", "\tDELIMITER\r\n",
 	} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
 		for _, d := range []Dialect{Postgres, MySQL} {
 			last := 0
+			c := d.Classify(in)
 			for _, s := range d.Split(in) {
-				if s.Start < last || s.End < s.Start || s.End > len(in) {
+				if s.Start < last || s.End <= s.Start || s.End > len(in) {
 					t.Fatalf("bad span %+v after %d for %q", s, last, in)
 				}
 				last = s.End
+				// The whole text never reads as safer than a statement in it.
+				if sc := d.Classify(in[s.Start:s.End]); sc.Risk > c.Risk || (c.ReadOnly && !sc.ReadOnly) {
+					t.Fatalf("statement %q is %+v but the text is %+v", in[s.Start:s.End], sc, c)
+				}
 			}
-			c := d.Classify(in)
 			if c.ReadOnly && c.Risk != tile.RiskNone {
 				t.Fatalf("read-only and risky: %+v for %q", c, in)
 			}
