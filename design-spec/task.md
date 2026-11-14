@@ -34,7 +34,8 @@ Each result can change the design. Results are in [spike-results.md](spike-resul
 - [x] Prove MySQL cancel through `KILL QUERY` on a second connection
 - [x] Prove PostgreSQL cancel through `CancelRequestContextWatcherHandler`
 - [x] Measure binary size with `modernc.org/sqlite` and the Charm stack
-- [ ] Run CodeMirror and SvelteKit static output under the strict CSP
+- [x] Run CodeMirror and SvelteKit static output under the strict CSP in Chromium, Firefox, and WebKit
+- [ ] Explain WebKit's one style-src message on a system colour-scheme change, and check it on real Safari
 - [x] Verify whether `go-sql-driver/mysql` exposes the original table name of result columns
 - [x] Verify MariaDB `parsec` auth and `charm.land/huh/v2`
 - [ ] Verify the Windows SSH agent pipe through `os.OpenFile`
@@ -74,7 +75,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Out-of-process protocol in `tile/plugin`, standard library only: `Serve` for plugins and a host client that the engine cannot tell from an in-process tile
 - [x] Facets, cancel, stream context, and secret callbacks across the process boundary, with frame validation and fail-safe language calls
 - [x] `tiletest.OutOfProcess`, and out-of-process conformance tests for the PostgreSQL and MySQL tiles
-- [ ] Pass the out-of-process conformance run against the compose databases (wired into the integration job; not yet run)
+- [x] Pass the out-of-process conformance run against the compose databases
 - [x] `tess plugin install` from `github:OWNER/REPO[@TAG]`, an https descriptor URL, or a local path, with sources and indexes in `config.toml`
 - [x] Ed25519 descriptor signatures, `tess plugin trust`, `keygen`, and `sign`; unsigned installs only with `--allow-unsigned`
 - [x] SHA-256 pinning at install, re-checked before each launch and by `tess plugin verify`
@@ -85,14 +86,14 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Show the tess version in `tess version`, the TUI status line and help, and the web header; development builds show their commit
 - [ ] Meet the out-of-process throughput gate (protocol ceiling measured at about 517k one-column rows/s; see spike-results.md)
 - [ ] Carry `Env.Dial` and the `Completer` facet across the protocol
-- [ ] Refuse downgrades to an older signed version
+- [x] Refuse downgrades to an older signed version
 - [ ] Publish an official index and publisher key, so `tess plugin install NAME` works without configuration
 
 ### Platform services
 
 - [x] Secrets: master key in the OS keychain, AES-256-GCM blobs, Argon2id fallback, key file option
 - [x] Add a secret type that always prints `[redacted]`
-- [ ] Add a redacting `slog` handler
+- [x] Add a redacting `slog` handler
 - [x] Store: TOML config and profiles under `~/.config/tessera/`, SQLite state with migrations
 - [ ] Dialer: dial policy and SSH chains with password, key, agent, keyboard-interactive, and jump hosts
 - [ ] Check SSH host keys against `known_hosts` with trust on first use
@@ -217,7 +218,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Connection form rendered from `Form`
 - [x] Empty, error, and loading states, with row progress and a cancel button
 - [x] Render all database values as text only
-- [ ] Lint rule banning `{@html}` on data
+- [x] Lint rule banning `{@html}` and DOM HTML sinks, in `npm run lint`
 - [ ] Add axe and Playwright tests, and bundle size budget in CI
 
 ### Export

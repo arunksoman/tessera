@@ -40,7 +40,7 @@ Usage:
   tess query -c NAME [-f table|csv|json] [--yes] [--raw] [--timeout 30s] [SQL]
   tess history -c NAME [-n 20]
   tess audit verify
-  tess plugin install NAME [--from SOURCE] [--sha256 HEX] [--allow-unsigned] [--force] [--yes]
+  tess plugin install NAME [--from SOURCE] [--sha256 HEX] [--allow-unsigned] [--force [--allow-downgrade]] [--yes]
   tess plugin list | remove NAME | verify [NAME]
   tess plugin trust PUBLISHER PUBLIC-KEY | untrust PUBLISHER | keys
   tess plugin keygen --out FILE | sign --key FILE DESCRIPTOR

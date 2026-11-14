@@ -73,10 +73,26 @@ HEADED=1 PLAYWRIGHT_DIR=<dir with playwright installed> node web/spikes/grid/mea
 
 The rows in `index.html` still set `will-change: transform`, which gives each row its own layer and may cost frame rate. Try removing it first. If drag stays low on real hardware, the next fix is to paint placeholders during fast drags, since real data needs fetching at that point anyway. Canvas is the last resort, because of accessibility.
 
+## CSP
+
+Measured on 14 November 2026 with Playwright 1.62, on the built app served by `tess serve` with its real CSP, against the compose PostgreSQL. [web/spikes/csp/check.mjs](../web/spikes/csp/check.mjs) loads the app, types in CodeMirror, opens completion, runs a query into the grid, opens a table from the tree to browse, switches the theme with the app's control, and then changes the system colour scheme. It fails on any `securitypolicyviolation` event, page error, or CSP console message.
+
+```sh
+PLAYWRIGHT_DIR=<dir with playwright installed> node web/spikes/csp/check.mjs
+```
+
+| Browser | Result |
+|---|---|
+| Chromium | No violations |
+| Firefox | No violations |
+| WebKit | No violations from anything the app does. Changing the system colour scheme through Playwright logs one "Refused to apply a stylesheet" message, with no `securitypolicyviolation` event and no source line. Every inline-styled element keeps its computed style afterwards. Minimal pages with the same CSP, SVG favicon, `color-scheme`, CSSOM custom properties, and cloned template styles do not reproduce it. |
+
+The design holds. CodeMirror takes the per-response nonce, Svelte's `style:` directives go through CSSOM, and SvelteKit's one literal style attribute passes by hash with `'unsafe-hashes'`.
+
 ## Still open
 
 - Foreground FPS measurement, above.
 - Screen reader test of the grid. This needs a person with NVDA, JAWS, or VoiceOver.
 - Windows SSH agent pipe through `os.OpenFile`. The `ssh-agent` service is stopped on this machine and the pipe is absent.
 - PostgreSQL and MySQL streaming through the spool to a browser. The parts are proven separately, and the end-to-end path waits for the spool and server.
-- CSP with CodeMirror and SvelteKit output.
+- The WebKit message on a system colour-scheme change, above. Check real Safari on macOS before calling it a Playwright artifact.
