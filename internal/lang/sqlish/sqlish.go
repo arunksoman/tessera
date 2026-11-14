@@ -21,11 +21,12 @@ type Dialect struct {
 	nestedComments  bool
 	dashNeedsSpace  bool // "--" starts a comment only before whitespace
 	execComments    bool // /*! ... */ runs as code
+	delimiterCmd    bool // the mysql client's DELIMITER command
 }
 
 var (
 	Postgres = Dialect{id: "sql-pg", dollarQuote: true, nestedComments: true}
-	MySQL    = Dialect{id: "sql-mysql", backslashString: true, hashComment: true, backtickIdent: true, dashNeedsSpace: true, execComments: true}
+	MySQL    = Dialect{id: "sql-mysql", backslashString: true, hashComment: true, backtickIdent: true, dashNeedsSpace: true, execComments: true, delimiterCmd: true}
 )
 
 // Language returns the dialect as a tile.Language.
@@ -57,17 +58,24 @@ type token struct {
 
 // lex scans text. Comments produce no tokens, except executable comments, whose bodies
 // are scanned as code.
-func (d Dialect) lex(s string) []token {
+func (d Dialect) lex(s string) []token { return d.lexUntil(s, nil) }
+
+// lexUntil lexes like lex but stops after the first token stop accepts. Between tokens the
+// lexer holds no state except paren depth, so lexing again from that token's end continues
+// exactly where it stopped.
+func (d Dialect) lexUntil(s string, stop func(token) bool) []token {
 	var toks []token
 	depth := 0
+	done := false
 	emit := func(k tokenKind, start, end int) {
 		t := token{kind: k, start: start, end: end, paren: depth}
 		if k == tokWord {
 			t.upper = strings.ToUpper(s[start:end])
 		}
 		toks = append(toks, t)
+		done = stop != nil && stop(t)
 	}
-	for i := 0; i < len(s); {
+	for i := 0; i < len(s) && !done; {
 		c := s[i]
 		switch {
 		case isSpace(c):
@@ -240,59 +248,159 @@ func isWordStart(c byte) bool {
 
 func isWordPart(c byte) bool { return isWordStart(c) || (c >= '0' && c <= '9') || c == '$' }
 
-// Split returns one span per statement, trimmed of comments and whitespace at the ends.
+// Split returns one span per statement, trimmed of comments and whitespace at the ends. A
+// comment just before a statement's terminator stays in its span, so the text sent to the
+// server matches what the user wrote.
+//
+// In MySQL, a DELIMITER line changes the terminator as the mysql client does, which lets a
+// script hold procedure bodies with semicolons inside. The line itself is never sent. Like
+// the client, it counts only at the start of a line with no statement pending, takes the
+// first word as the new terminator, ignores the rest of the line, and is dropped without
+// effect when that word is missing or holds a backslash.
 func (d Dialect) Split(text string) []tile.Span {
 	var spans []tile.Span
-	toks := d.lex(text)
-	start := -1
-	end := 0
-	for _, t := range toks {
-		if t.kind == tokSemi {
-			if start >= 0 {
-				spans = append(spans, tile.Span{Start: start, End: end})
-				start = -1
-			}
-			continue
-		}
+	delim := ";"
+	start, last := -1, 0 // the pending statement, and the end of its last token
+	finish := func(stop int) {
 		if start < 0 {
-			start = t.start
+			return
 		}
-		end = t.end
-	}
-	if start >= 0 {
+		end := last
+		if stop >= 0 {
+			end = start + len(strings.TrimRight(text[start:stop], " \t\r\n\f"))
+		}
 		spans = append(spans, tile.Span{Start: start, End: end})
+		start = -1
 	}
-	return d.withInnerComments(text, spans)
-}
-
-// withInnerComments keeps a trailing comment that sits before the semicolon, so the text
-// sent to the server matches what the user wrote.
-func (d Dialect) withInnerComments(text string, spans []tile.Span) []tile.Span {
-	for i := range spans {
-		limit := len(text)
-		if i+1 < len(spans) {
-			limit = spans[i+1].Start
+	// A word that may be a DELIMITER command stops the lexer, so text after a changed
+	// delimiter is lexed once, not again for every DELIMITER line in a long dump.
+	base := 0
+	command := func(t token) bool {
+		ts, te := base+t.start, base+t.end
+		return d.delimiterCmd && t.kind == tokWord && t.upper == "DELIMITER" &&
+			atLineStart(text, ts) && (te == len(text) || isSpace(text[te]))
+	}
+	for base <= len(text) {
+		toks := d.lexUntil(text[base:], command)
+		next := -1 // where to lex again
+		if n := len(toks); n > 0 && command(toks[n-1]) {
+			next = base + toks[n-1].end
 		}
-		rest := text[spans[i].End:limit]
-		semi := -1
-		for _, t := range d.lex(rest) {
-			if t.kind == tokSemi {
-				semi = t.start
+		for i := 0; i < len(toks); {
+			t := toks[i]
+			ts, te := base+t.start, base+t.end
+			if t.kind == tokString || t.kind == tokIdent {
+				if start < 0 {
+					start = ts
+				}
+				last = te
+				i++
+				continue
+			}
+			if start < 0 && command(t) {
+				eol := lineEnd(text, te)
+				if arg, ok := delimiterArg(text[te:eol]); ok {
+					delim = arg
+				}
+				next = eol
 				break
 			}
+			// The terminator is matched in text outside strings, identifiers, and comments, and
+			// may span tokens or sit inside one, as in END$$.
+			j := i + 1
+			for j < len(toks) && isCode(toks[j]) && toks[j].start == toks[j-1].end {
+				j++
+			}
+			runEnd := base + toks[j-1].end
+			for p := ts; p < runEnd; {
+				k := strings.Index(text[p:runEnd], delim)
+				if k < 0 {
+					if start < 0 {
+						start = p
+					}
+					last = runEnd
+					break
+				}
+				if k > 0 {
+					if start < 0 {
+						start = p
+					}
+					last = p + k
+				}
+				finish(p + k)
+				p += k + len(delim)
+			}
+			i = j
 		}
-		if semi >= 0 {
-			spans[i].End += len(strings.TrimRight(rest[:semi], " \t\r\n\f"))
+		if next < 0 {
+			break
 		}
+		base = next
 	}
+	finish(-1)
 	return spans
+}
+
+func isCode(t token) bool { return t.kind != tokString && t.kind != tokIdent }
+
+// atLineStart reports whether only spaces and tabs come before i on its line.
+func atLineStart(s string, i int) bool {
+	for i > 0 && (s[i-1] == ' ' || s[i-1] == '\t') {
+		i--
+	}
+	return i == 0 || s[i-1] == '\n'
+}
+
+// delimiterArg reads DELIMITER's argument as the mysql client does: the first word, or a
+// quoted string. It refuses an empty one or one with a backslash, as the client does.
+func delimiterArg(rest string) (string, bool) {
+	rest = strings.TrimLeft(rest, " \t")
+	var arg string
+	if rest != "" && (rest[0] == '\'' || rest[0] == '"' || rest[0] == '`') {
+		arg = rest[1:]
+		if n := strings.IndexByte(arg, rest[0]); n >= 0 {
+			arg = arg[:n]
+		} else {
+			arg = strings.TrimRight(arg, " \t\r")
+		}
+	} else {
+		n := strings.IndexFunc(rest, func(r rune) bool { return r < 0x80 && isSpace(byte(r)) })
+		if n < 0 {
+			n = len(rest)
+		}
+		arg = rest[:n]
+	}
+	if arg == "" || strings.Contains(arg, "\\") {
+		return "", false
+	}
+	return arg, true
 }
 
 var readVerbs = []string{"SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "VALUES", "TABLE", "WITH"}
 
 // Classify returns the worst classification across all statements in the text.
 // Anything not recognised as a read counts as a write.
+//
+// It reads the text exactly as the server would, so a DELIMITER line is an unknown statement.
+// In MySQL it also reads the text as Split would, with DELIMITER lines applied, and returns
+// the worse of the two, so neither reading can hide a statement from the other.
 func (d Dialect) Classify(stmt string) tile.Classification {
+	worst := d.classifyPlain(stmt)
+	if !d.delimiterCmd {
+		return worst
+	}
+	for _, s := range d.Split(stmt) {
+		c := d.classifyPlain(stmt[s.Start:s.End])
+		schema := worst.Schema || c.Schema
+		if c.Risk > worst.Risk || (c.Risk == worst.Risk && worst.ReadOnly && !c.ReadOnly) {
+			worst = c
+		}
+		worst.Schema = schema
+	}
+	return worst
+}
+
+func (d Dialect) classifyPlain(stmt string) tile.Classification {
 	toks := d.lex(stmt)
 	worst := tile.Classification{ReadOnly: true}
 	first := true

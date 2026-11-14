@@ -449,7 +449,7 @@ This uses only `net/http`. Page encoding is a small length-prefixed binary forma
 A user typing `SELECT a. FROM orders a WHERE` always has invalid SQL at the moment completion matters, so full parsers solve the wrong problem. The steps are:
 
 1. **Lexing** with per-dialect rules: PostgreSQL dollar quotes and `E''` strings, MySQL backticks and `DELIMITER`, and MySQL `/*! */` treated as code. The lexer never fails.
-2. **Statement split** on `;` outside strings and bodies. The cursor picks the statement.
+2. **Statement split** on `;` outside strings and bodies. The cursor picks the statement. MySQL scripts can change the terminator with a `DELIMITER` line, following the `mysql` client: the line is never sent. It counts only at the start of a line with no statement pending, and the terminator is matched outside strings and comments, including inside a word as in `END$$`. The classifier takes the worse of the raw text and the split text, so a `DELIMITER` line cannot hide a statement.
 3. **Clause tracking:** a small state machine with a paren-depth stack finds the clause at the cursor (`SELECT` list, `FROM`, `JOIN ON`, `WHERE`, `GROUP BY`, `INSERT` columns, `SET`, DDL forms).
 4. **Scope resolution:** collect tables and aliases in the current and enclosing query blocks, including CTEs and subquery aliases, even when the rest fails to lex properly.
 5. **Candidates by context** from the metadata cache, ranked: alias columns first, then tables in the current schema, then functions, then keywords. FK-based `JOIN ... ON` suggestions come from relations.

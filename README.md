@@ -88,7 +88,7 @@ It listens on loopback by default. Any other address needs TLS (`--tls-cert` and
 
 ### Safety
 
-`DROP`, `TRUNCATE`, and `DELETE` or `UPDATE` without `WHERE` need confirmation. Connections created with `--env production` also confirm every write. A script is checked before its first statement runs. In scripts, `--yes` answers confirmations.
+`DROP`, `TRUNCATE`, and `DELETE` or `UPDATE` without `WHERE` need confirmation. Connections created with `--env production` also confirm every write. A script is checked before its first statement runs. In scripts, `--yes` answers confirmations. MySQL scripts may use `DELIMITER` lines, as in the `mysql` client, for procedure and trigger bodies.
 
 `--read-only` refuses writes in the client and asks the server to enforce read-only as well. This is a guardrail: a session can undo it, and a client cannot prove a statement is harmless. For a hard guarantee, connect with a read-only database role.
 

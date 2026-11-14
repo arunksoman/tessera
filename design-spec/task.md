@@ -117,7 +117,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 
 - [x] Tolerant lexer with PostgreSQL rules: dollar quotes, `E''` strings, comments
 - [x] Add MySQL rules: backticks, backslash strings, `#` comments, `/*! */` treated as code
-- [ ] Support `DELIMITER` in the splitter
+- [x] Support `DELIMITER` in the splitter
 - [x] Statement splitter
 - [x] Default-deny statement classifier, with corpus and fuzz tests
 - [x] Statement redaction for `PASSWORD '...'` and similar
