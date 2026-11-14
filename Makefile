@@ -38,8 +38,8 @@ $(WEB_DEPS): web/package.json web/package-lock.json
 $(WEB_OUT): $(WEB_DEPS) $(WEB_SRC)
 	cd web && $(NPM) run build
 
-web-check: $(WEB_DEPS) ## Type-check the web app
-	cd web && $(NPM) run check
+web-check: $(WEB_DEPS) ## Type-check the web app, lint for HTML sinks, and test the lint
+	cd web && $(NPM) run check && $(NPM) run lint && $(NPM) test
 
 run: build ## Build, then start tess serve
 	./$(BIN) serve

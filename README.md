@@ -120,7 +120,7 @@ elasticsearch = "github:acme/tessera-elasticsearch@v0.2.0"
 acme = "PUBLIC-KEY"
 ```
 
-A plugin runs with your permissions and is not sandboxed. tess shows the publisher, source, and SHA-256 and asks before installing, refuses plugins that no trusted key signed unless you pass `--allow-unsigned`, downloads only over https, pins the binary's hash and checks it again before every start, and hands a plugin only the secrets of its own connections. `tess serve` loads no plugins unless `allow_in_server = true` is set under `[plugins]`.
+A plugin runs with your permissions and is not sandboxed. tess shows the publisher, source, and SHA-256 and asks before installing, refuses plugins that no trusted key signed unless you pass `--allow-unsigned`, downloads only over https, pins the binary's hash and checks it again before every start, refuses to replace a plugin with an older release unless you pass `--allow-downgrade`, and hands a plugin only the secrets of its own connections. `tess serve` loads no plugins unless `allow_in_server = true` is set under `[plugins]`.
 
 To write a plugin, implement the [`tile`](tile/tile.go) interfaces and call `plugin.Serve` from [`tile/plugin`](tile/plugin/wire.go) in `main`; run [`tiletest`](tile/tiletest/tiletest.go) against it with `tiletest.OutOfProcess`. Publish a `tessera-plugin.json` descriptor in a release, then sign it:
 

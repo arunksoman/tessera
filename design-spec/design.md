@@ -277,7 +277,7 @@ A separate process is not a sandbox: a plugin runs with the user's OS privileges
 - Plugin processes start on first use, not at every `tess` start, and stop when tess exits.
 - Network traffic goes through `Env.Dial` by convention only. Without an OS sandbox this cannot be forced.
 - `tess serve` refuses plugins unless `allow_in_server = true` is set under `[plugins]` in the config file.
-- A downgrade to an older signed release is not prevented yet, so a compromised source could serve an old, vulnerable version.
+- Replacing an installed release with an older one, or with one whose version cannot be compared, needs `--allow-downgrade`, so a compromised source cannot roll a plugin back to a vulnerable release. Removing a plugin forgets its version, so a remove and reinstall is not checked.
 - Landlock and seccomp on Linux, and AppContainer on Windows, are possible later hardening. They are not assumed here.
 
 **Versioning:**

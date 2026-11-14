@@ -102,6 +102,9 @@ type Options struct {
 	AllowUnsigned bool
 	SHA256        string // optional pin for the binary
 	Force         bool   // replace an installed plugin
+	// AllowDowngrade replaces an installed release with an older one. Without it a source
+	// cannot roll a plugin back to a release with a known hole.
+	AllowDowngrade bool
 }
 
 // Pending is a verified descriptor, ready to show the user before anything runs.
@@ -383,6 +386,11 @@ func (in *Installer) Resolve(ctx context.Context, name string, opt Options) (*Pe
 	if err := version.Supports(in.tess(), d.MinTess, d.MaxTess); err != nil {
 		return nil, fmt.Errorf("plugin %s %s %w", name, d.Version, err)
 	}
+	if !opt.AllowDowngrade {
+		if err := in.checkNotOlder(name, d.Version); err != nil {
+			return nil, err
+		}
+	}
 	a, ok := d.Artifacts[in.platform()]
 	if !ok {
 		return nil, fmt.Errorf("plugin %s %s has no build for %s", name, d.Version, in.platform())
@@ -396,6 +404,22 @@ func (in *Installer) Resolve(ctx context.Context, name string, opt Options) (*Pe
 	}
 	p.Descriptor, p.Artifact, p.artifact, p.From = d, a, al, al.String()
 	return p, nil
+}
+
+// checkNotOlder refuses a release older than the installed one. An installed plugin with no
+// comparable version, such as a local build, or with an unreadable record, does not block.
+func (in *Installer) checkNotOlder(name, next string) error {
+	cur, err := readRecord(in.Root, name)
+	if err != nil || !version.Valid(cur.Version) || cur.Version == version.Dev {
+		return nil
+	}
+	if !version.Valid(next) {
+		return fmt.Errorf("plugin %s %q is not a version, so it cannot be checked against installed %s; use --allow-downgrade to replace it anyway", name, next, cur.Version)
+	}
+	if c, err := version.Compare(next, cur.Version); err == nil && c < 0 {
+		return fmt.Errorf("plugin %s %s is older than installed %s; use --allow-downgrade to install it anyway", name, next, cur.Version)
+	}
+	return nil
 }
 
 // peek reads up to n bytes from the start of a file.

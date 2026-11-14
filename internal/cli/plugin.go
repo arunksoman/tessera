@@ -101,6 +101,7 @@ func (a *App) pluginInstall(args []string) error {
 	fs.StringVar(&opt.SHA256, "sha256", "", "require the binary to have this SHA-256 `HEX`")
 	fs.BoolVar(&opt.AllowUnsigned, "allow-unsigned", false, "install a plugin no trusted publisher signed")
 	fs.BoolVar(&opt.Force, "force", false, "replace an installed plugin of the same name")
+	fs.BoolVar(&opt.AllowDowngrade, "allow-downgrade", false, "with --force, replace an installed plugin with an older release")
 	yes := fs.Bool("yes", false, "install without asking")
 	rest, err := parse(fs, args)
 	if err != nil {

@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/arunksoman/tessera/internal/cli"
+	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/tiles/mysql"
 	"github.com/arunksoman/tessera/internal/tiles/postgres"
 	"github.com/arunksoman/tessera/tile"
@@ -22,6 +24,9 @@ import (
 var version = "dev"
 
 func main() {
+	// Every log line, including net/http's through the standard log package, passes the
+	// redacting handler, so a password in an error or URL does not reach the terminal or a file.
+	slog.SetDefault(slog.New(secrets.NewLogHandler(slog.NewTextHandler(os.Stderr, nil))))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	app := &cli.App{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,

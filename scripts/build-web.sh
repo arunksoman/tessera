@@ -4,4 +4,5 @@ set -euo pipefail
 cd "$(dirname "$0")/../web"
 npm ci --ignore-scripts
 npm run check
+npm run lint
 npm run build

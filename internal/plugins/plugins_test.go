@@ -472,3 +472,51 @@ func TestManifestTessBounds(t *testing.T) {
 		t.Fatalf("start err = %v", err)
 	}
 }
+
+// A compromised source could serve an older signed release with a known hole, so replacing a
+// signed install with an older version needs an explicit choice.
+func TestDowngradeRefused(t *testing.T) {
+	r := newRelease(t)
+	in := r.installer(t)
+	at := func(v string) string {
+		return r.publish(t, "redis", true, func(d *Descriptor) { d.Version = v })
+	}
+	if _, err := install(t, in, "redis", Options{From: at("1.2.0")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{"1.1.9", "1.2.0-rc.1", "not-a-version"} {
+		_, err := in.Resolve(context.Background(), "redis", Options{From: at(v), Force: true})
+		if err == nil || !strings.Contains(err.Error(), "--allow-downgrade") {
+			t.Errorf("%s over 1.2.0: err = %v", v, err)
+		}
+	}
+	for _, v := range []string{"1.2.0", "1.3.0"} {
+		if _, err := in.Resolve(context.Background(), "redis", Options{From: at(v), Force: true}); err != nil {
+			t.Errorf("%s over 1.2.0: %v", v, err)
+		}
+	}
+	rec, err := install(t, in, "redis", Options{From: at("1.0.0"), Force: true, AllowDowngrade: true})
+	if err != nil || rec.Version != "1.0.0" {
+		t.Fatalf("explicit downgrade: %+v, %v", rec, err)
+	}
+}
+
+// A local build has no version to compare, so it never blocks a later signed install, and an
+// unreadable record does not block a repair.
+func TestDowngradeCheckSkipsUnversioned(t *testing.T) {
+	r := newRelease(t)
+	in := r.installer(t)
+	bin := filepath.Join(t.TempDir(), "build")
+	os.WriteFile(bin, fakeBinary, 0o700)
+	if _, err := install(t, in, "redis", Options{From: bin, AllowUnsigned: true}); err != nil {
+		t.Fatal(err)
+	}
+	src := r.publish(t, "redis", true, func(d *Descriptor) { d.Version = "0.1.0" })
+	if _, err := in.Resolve(context.Background(), "redis", Options{From: src, Force: true}); err != nil {
+		t.Fatalf("signed over local: %v", err)
+	}
+	os.WriteFile(filepath.Join(in.Root, "redis", recordFile), []byte("{"), 0o600)
+	if _, err := in.Resolve(context.Background(), "redis", Options{From: src, Force: true}); err != nil {
+		t.Fatalf("over a broken record: %v", err)
+	}
+}
