@@ -1,7 +1,7 @@
 // Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { envOf, filterProfiles, parseRecent, relativeTime, renameRecent, summary, touchRecent } from '../src/lib/connections.ts';
+import { colorOf, colors, filterProfiles, parseRecent, relativeTime, renameRecent, summary, touchRecent } from '../src/lib/connections.ts';
 
 const profile = (name, values = {}, tile = 'postgres') => ({ name, tile, readOnly: false, noHistory: false, values, secrets: {} });
 
@@ -12,20 +12,14 @@ test('summary shows user, address, and database', () => {
 	assert.equal(summary(profile('a', {})), '');
 });
 
-test('envOf maps every environment to a colour and a text label', () => {
-	assert.equal(envOf('production').color, 'production');
-	assert.equal(envOf('production').label, 'Production');
-	assert.equal(envOf('production').short, 'prod');
-	assert.equal(envOf('development').short, 'dev');
-	assert.equal(envOf('staging').short, 'staging');
-	assert.equal(envOf('qa').short, 'qa');
-	assert.equal(envOf('staging').color, 'staging');
-	assert.equal(envOf('development').color, 'development');
-	assert.equal(envOf(undefined).color, 'none');
-	assert.equal(envOf('').label, 'None');
-	// An environment this build does not know still shows its name, never a safe colour.
-	assert.equal(envOf('qa').label, 'qa');
-	assert.equal(envOf('qa').color, 'none');
+test('colorOf accepts only palette names', () => {
+	assert.deepEqual(colors.map((c) => c.name), ['', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink']);
+	assert.equal(colorOf('green'), 'green');
+	assert.equal(colorOf(''), 'none');
+	assert.equal(colorOf(undefined), 'none');
+	// Anything else, such as CSS from a hand-edited config, shows no colour.
+	assert.equal(colorOf('#ff0000'), 'none');
+	assert.equal(colorOf('red;x'), 'none');
 });
 
 test('touchRecent puts the latest first, once, and keeps ten', () => {

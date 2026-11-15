@@ -20,6 +20,8 @@ export type Profile = {
 	name: string;
 	tile: string;
 	env?: string;
+	/** A palette name chosen in the web app; see colors in connections.ts. */
+	color?: string;
 	readOnly: boolean;
 	noHistory: boolean;
 	values: Record<string, string>;
@@ -30,6 +32,7 @@ export type SaveProfile = {
 	from?: string;
 	tile: string;
 	env: string;
+	color: string;
 	readOnly: boolean;
 	noHistory: boolean;
 	values: Record<string, string>;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api, type Profile } from '#lib/api.ts';
-	import { envOf, filterProfiles, summary } from '#lib/connections.ts';
+	import { colorOf, filterProfiles, summary } from '#lib/connections.ts';
 	import { app } from '#lib/state.svelte.ts';
 	import Icon from './Icon.svelte';
 	import TileMark from './TileMark.svelte';
@@ -38,15 +38,13 @@
 	<h2>Saved <span class="count">{app.profiles.length}</span></h2>
 	<div class="list">
 		{#each shown as p (p.name)}
-			{@const env = envOf(p.env)}
-			<section class="env-{env.color}">
+			<section class="conn-{colorOf(p.color)}">
 				<div class="conn">
 					<button class="name" aria-expanded={!!app.expanded[p.name]} title={summary(p) || p.name}
 						onclick={() => (app.expanded[p.name] = !app.expanded[p.name])}>
 						<span class="twisty"><Icon name={app.expanded[p.name] ? 'chevronDown' : 'chevronRight'} size={14} /></span>
 						<TileMark tile={p.tile} size={16} />
 						<span class="text">{p.name}</span>
-						{#if env.value}<span class="badge env" title={env.label}>{env.short}</span>{/if}
 						{#if p.readOnly}<span class="badge ro" title="Read-only">ro</span>{/if}
 					</button>
 					<span class="actions">
@@ -70,7 +68,6 @@
 			<p class="empty">{app.profiles.length ? 'No connection matches.' : 'No connections yet.'}</p>
 		{/each}
 	</div>
-	<footer class="muted" title="tess version">Tessera {app.version}</footer>
 </nav>
 
 <style>
@@ -128,9 +125,9 @@
 		flex: 1;
 		padding: 0 0 4px;
 	}
-	/* The environment colour runs down the left edge of the connection and its tree. */
+	/* The connection's colour runs down the left edge of its entry and its tree. */
 	section {
-		border-left: 3px solid var(--env);
+		border-left: 3px solid var(--conn);
 	}
 	.conn {
 		display: flex;
@@ -193,10 +190,5 @@
 	.empty {
 		padding: 0 12px;
 		color: var(--muted);
-	}
-	footer {
-		padding: 6px 12px;
-		border-top: 1px solid var(--border);
-		font-size: 11px;
 	}
 </style>

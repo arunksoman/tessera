@@ -26,6 +26,8 @@
 	--font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 	--radius: 4px;
 	--row: 28px;
+	/* Height of the footer row under the sidebar and the tabs. */
+	--footer: 26px;
 }
 :root[data-theme='light'] {
 	color-scheme: light;
@@ -151,24 +153,36 @@ textarea {
 	text-transform: uppercase;
 	line-height: 16px;
 }
-/* Environment colours. The colour is a quick cue; a text label always goes with it. Danger
-   is reserved for production and is never a tile colour. */
-.env-none {
-	--env: transparent;
-	--on-env: var(--text);
+/* Connection colours, chosen by the user in the connection form. Each sets --conn for the
+   sidebar edge, start page card, tab edge, and footer. */
+.conn-none {
+	--conn: transparent;
 }
-.env-development {
-	--env: var(--success);
-	--on-env: var(--on-accent);
+.conn-red {
+	--conn: light-dark(#d63a3a, #f26b6b);
 }
-.env-staging {
-	--env: var(--warning);
-	--on-env: var(--on-accent);
+.conn-orange {
+	--conn: light-dark(#d9711a, #f5a35c);
 }
-.env-production {
-	--env: var(--danger);
-	--on-env: #fff;
+.conn-yellow {
+	--conn: light-dark(#c29d00, #f0d04f);
 }
+.conn-green {
+	--conn: light-dark(#2e9e5b, #5cc98a);
+}
+.conn-cyan {
+	--conn: light-dark(#1591ad, #4fc9e0);
+}
+.conn-blue {
+	--conn: light-dark(#2f6fd6, #78a6f0);
+}
+.conn-purple {
+	--conn: light-dark(#8a4fd1, #b88cf0);
+}
+.conn-pink {
+	--conn: light-dark(#cf4596, #f08cc8);
+}
+
 /* Risk and state badges, which reuse the production and staging colours. */
 .badge.production {
 	background: var(--danger);
@@ -177,10 +191,6 @@ textarea {
 .badge.staging {
 	background: var(--warning);
 	color: var(--on-accent);
-}
-.badge.env {
-	background: var(--env);
-	color: var(--on-env);
 }
 .badge.ro {
 	border: 1px solid var(--border);

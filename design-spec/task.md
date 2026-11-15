@@ -208,7 +208,8 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [ ] Every screen and component is tested in both themes, including the AA contrast check
 - [x] App shell: tree, tabs, resizable panes, status bar, environment banner
 - [x] Connection tiles with color, glyph, and label
-- [x] Start page with saved and recent connections, and the web app's environment tags shown as colours with text labels (the TUI keeps its banner)
+- [x] Start page with saved and recent connections
+- [x] Connection colours in the web app, chosen from a fixed palette and stored as `color` in the profile; environment tags stay for the TUI and the safety rules
 - [x] Connection form: database type picker with logos, grouped fields, TLS options collapsed, and a password reveal
 - [x] Inline SVG icons (Lucide paths and Simple Icons database logos, licences in `web/src/lib/icons`) instead of text glyphs
 - [x] CodeMirror editor with tabs and SQL keyword completion

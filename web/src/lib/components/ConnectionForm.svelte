@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api, ApiError, type FormField, type Profile, type Saved } from '#lib/api.ts';
-	import { envOf, envs } from '#lib/connections.ts';
+	import { colors } from '#lib/connections.ts';
 	import { app } from '#lib/state.svelte.ts';
 	import { untrack } from 'svelte';
 	import Dialog from './Dialog.svelte';
@@ -16,7 +16,9 @@
 	let step = $state<'pick' | 'form'>(initial || app.tiles.length < 2 ? 'form' : 'pick');
 	let name = $state(initial?.name ?? '');
 	let tileID = $state(initial?.tile ?? app.tiles[0]?.id ?? '');
-	let env = $state(initial?.env ?? '');
+	// The environment tag is set from the TUI or command line; the web form keeps it as is.
+	const env = initial?.env ?? '';
+	let color = $state(initial?.color ?? '');
 	let readOnly = $state(initial?.readOnly ?? false);
 	let noHistory = $state(initial?.noHistory ?? false);
 	let values = $state<Record<string, string>>({});
@@ -27,8 +29,6 @@
 	let saved = $state<Saved | null>(null);
 
 	const tile = $derived(app.tile(tileID));
-	// Keep a tag this build does not offer, such as one set from the command line.
-	const choices = $derived(envs.some((e) => e.value === initial?.env) || !initial?.env ? envs : [...envs, envOf(initial.env)]);
 
 	// Enums and files are TLS modes and certificates for the built-in tiles: they go in a
 	// collapsed section, so the common fields come first.
@@ -82,6 +82,7 @@
 				from: editing?.name,
 				tile: tileID,
 				env,
+				color,
 				readOnly,
 				noHistory,
 				values: Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== '')),
@@ -182,17 +183,14 @@
 				</div>
 			</div>
 
-			<fieldset class="envs">
-				<legend>Environment colour</legend>
-				{#each choices as e (e.value)}
-					<label class="env-choice env-{e.color}" title={e.note}>
-						<input type="radio" name="env" value={e.value} bind:group={env} />
-						<span class="swatch" aria-hidden="true"></span>
-						{e.label}
+			<fieldset class="colors">
+				<legend>Colour</legend>
+				{#each colors as c (c.name)}
+					<label class="swatch conn-{c.name || 'none'}" title={c.label}>
+						<input type="radio" name="color" value={c.name} bind:group={color} aria-label={c.label} />
 					</label>
 				{/each}
 			</fieldset>
-			<p class="note muted">{envOf(env).note}</p>
 
 			<div class="options">
 				<label class="check"><input type="checkbox" bind:checked={readOnly} /> Read-only</label>
@@ -321,10 +319,11 @@
 		font-size: 13px;
 		font-weight: 600;
 	}
-	.envs {
+	.colors {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		align-items: center;
+		gap: 8px;
 		margin: 12px 0 0;
 		padding: 0;
 		border: 0;
@@ -335,47 +334,34 @@
 		color: var(--muted);
 		font-size: 12px;
 	}
-	/* Each choice is a radio with its colour and its name, so colour is never the only signal. */
-	.env-choice {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 28px;
-		padding: 0 10px 0 8px;
-		border: 1px solid var(--border);
-		border-radius: 14px;
-		cursor: pointer;
-		color: var(--text);
-		font-size: 13px;
-	}
-	.env-choice input {
-		position: absolute;
-		opacity: 0;
-		pointer-events: none;
-	}
+	/* Round swatches; the radio inside stays focusable and is announced by its colour name. */
 	.swatch {
-		width: 12px;
-		height: 12px;
+		position: relative;
+		width: 22px;
+		height: 22px;
 		border-radius: 50%;
-		background: var(--env);
-		border: 1px solid var(--env);
+		background: var(--conn);
+		border: 2px solid var(--conn);
+		cursor: pointer;
 	}
-	.env-none .swatch {
+	.swatch.conn-none {
 		border-color: var(--muted);
 	}
-	.env-choice:has(input:checked) {
-		border-color: var(--lapis);
-		background: var(--selected);
-		font-weight: 600;
+	.swatch input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
 	}
-	.env-choice:has(input:focus-visible) {
+	.swatch:has(input:checked) {
+		box-shadow:
+			0 0 0 2px var(--surface),
+			0 0 0 4px var(--text);
+	}
+	.swatch:has(input:focus-visible) {
 		outline: 2px solid var(--lapis);
-		outline-offset: 1px;
-	}
-	.note {
-		margin: 6px 0 0;
-		font-size: 12px;
-		min-height: 1.45em;
+		outline-offset: 4px;
 	}
 	.options {
 		display: flex;

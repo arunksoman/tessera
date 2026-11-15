@@ -2,25 +2,26 @@
 // scripts/connections.test.mjs can run them under plain Node.
 import type { Profile } from './api.ts';
 
-export type EnvColor = 'none' | 'development' | 'staging' | 'production';
-/** `short` is for narrow places such as the sidebar. */
-export type Env = { value: string; label: string; short: string; color: EnvColor; note: string };
-
 /**
- * Environments in the order the form offers them. The colour is what the web app shows; the
- * value is what the engine's safety rules read, so production still confirms every write.
+ * The colours a user can mark a connection with in the web app. Only the name is stored;
+ * internal/server/api.go accepts the same list. A colour is a personal reminder, not an
+ * environment: safety rules read the profile's environment tag, which the TUI shows.
  */
-export const envs: Env[] = [
-	{ value: '', label: 'None', short: '', color: 'none', note: 'No environment tag' },
-	{ value: 'development', label: 'Development', short: 'dev', color: 'development', note: 'Local or personal databases' },
-	{ value: 'staging', label: 'Staging', short: 'staging', color: 'staging', note: 'Shared test systems' },
-	{ value: 'production', label: 'Production', short: 'prod', color: 'production', note: 'Every write asks you to type the connection name' }
-];
+export const colors = [
+	{ name: '', label: 'No colour' },
+	{ name: 'red', label: 'Red' },
+	{ name: 'orange', label: 'Orange' },
+	{ name: 'yellow', label: 'Yellow' },
+	{ name: 'green', label: 'Green' },
+	{ name: 'cyan', label: 'Cyan' },
+	{ name: 'blue', label: 'Blue' },
+	{ name: 'purple', label: 'Purple' },
+	{ name: 'pink', label: 'Pink' }
+] as const;
 
-/** The colour and label for a profile's environment. An unknown tag keeps its own name. */
-export function envOf(value: string | undefined): Env {
-	const v = value ?? '';
-	return envs.find((e) => e.value === v) ?? { value: v, label: v, short: v, color: 'none', note: '' };
+/** The CSS class suffix for a stored colour: `conn-<name>`, or `conn-none` for anything else. */
+export function colorOf(name: string | undefined): string {
+	return name && colors.some((c) => c.name === name) ? name : 'none';
 }
 
 /** A one-line address such as `app@db.local:5432/shop`, built from the usual field names. */

@@ -240,6 +240,7 @@ type profileJSON struct {
 	Name      string            `json:"name"`
 	Tile      string            `json:"tile"`
 	Env       string            `json:"env,omitempty"`
+	Color     string            `json:"color,omitempty"`
 	ReadOnly  bool              `json:"readOnly"`
 	NoHistory bool              `json:"noHistory"`
 	Values    map[string]string `json:"values"`
@@ -249,7 +250,7 @@ type profileJSON struct {
 }
 
 func (s *Server) describeProfile(p store.Profile) profileJSON {
-	out := profileJSON{Name: p.Name, Tile: p.Tile, Env: p.Env, ReadOnly: p.ReadOnly, NoHistory: p.NoHistory,
+	out := profileJSON{Name: p.Name, Tile: p.Tile, Env: p.Env, Color: p.Color, ReadOnly: p.ReadOnly, NoHistory: p.NoHistory,
 		Values: p.Values, Secrets: map[string]bool{}, Warnings: s.api.e.Warnings(p)}
 	if out.Values == nil {
 		out.Values = map[string]string{}
@@ -282,6 +283,7 @@ type saveProfileJSON struct {
 	From      string            `json:"from"`
 	Tile      string            `json:"tile"`
 	Env       string            `json:"env"`
+	Color     string            `json:"color"`
 	ReadOnly  bool              `json:"readOnly"`
 	NoHistory bool              `json:"noHistory"`
 	Values    map[string]string `json:"values"`
@@ -289,6 +291,10 @@ type saveProfileJSON struct {
 }
 
 var envs = []string{"", "development", "staging", engine.EnvProduction}
+
+// colors is the web app's palette. Profiles store a name from it, never a CSS value, so a
+// profile cannot carry styles into the page. web/src/lib/connections.ts has the same list.
+var colors = []string{"", "red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink"}
 
 // checkProfile builds settings field by field from the tile's form. Nothing outside the form
 // is accepted, so no raw connection string or file-reading option can arrive this way.
@@ -300,7 +306,10 @@ func (a *api) checkProfile(name string, in saveProfileJSON) (store.Profile, erro
 	if !slices.Contains(envs, in.Env) {
 		return store.Profile{}, badf("environment must be one of development, staging, production, or empty")
 	}
-	p := store.Profile{Name: name, Tile: in.Tile, Env: in.Env, ReadOnly: in.ReadOnly, NoHistory: in.NoHistory, Values: map[string]string{}}
+	if !slices.Contains(colors, in.Color) {
+		return store.Profile{}, badf("color must be one of %s, or empty", strings.Join(colors[1:], ", "))
+	}
+	p := store.Profile{Name: name, Tile: in.Tile, Env: in.Env, Color: in.Color, ReadOnly: in.ReadOnly, NoHistory: in.NoHistory, Values: map[string]string{}}
 	fields := map[string]tile.FormField{}
 	for _, f := range t.Manifest().ConnForm.Fields {
 		fields[f.Name] = f

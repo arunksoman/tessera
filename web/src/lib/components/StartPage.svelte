@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Profile } from '#lib/api.ts';
-	import { envOf, relativeTime, summary } from '#lib/connections.ts';
+	import { colorOf, relativeTime, summary } from '#lib/connections.ts';
 	import { app } from '#lib/state.svelte.ts';
 	import Icon from './Icon.svelte';
 	import TileMark from './TileMark.svelte';
@@ -23,15 +23,13 @@
 </script>
 
 {#snippet item(p: Profile, detail: string)}
-	{@const env = envOf(p.env)}
-	<li class="env-{env.color}">
+	<li class="conn-{colorOf(p.color)}">
 		<button class="open" onclick={() => app.connect(p.name)} title="Open a SQL tab on {p.name}">
 			<TileMark tile={p.tile} size={22} />
 			<span class="what">
 				<span class="name">{p.name}</span>
 				<span class="detail muted">{detail}</span>
 			</span>
-			{#if env.value}<span class="badge env">{env.label}</span>{/if}
 			{#if p.readOnly}<span class="badge ro">ro</span>{/if}
 		</button>
 		<button class="btn ghost icon edit" aria-label="Edit {p.name}" title="Edit" onclick={() => onedit(p)}><Icon name="edit" size={15} /></button>
@@ -132,16 +130,16 @@
 		flex-direction: column;
 		gap: 6px;
 	}
-	/* The environment colour is the card's left edge, with its label as a badge. */
+	/* The connection's colour is the card's left edge. */
 	li {
 		display: flex;
 		align-items: center;
 		border: 1px solid var(--border);
-		border-left: 4px solid var(--env);
+		border-left: 4px solid var(--conn);
 		border-radius: 6px;
 		background: var(--surface);
 	}
-	li.env-none {
+	li.conn-none {
 		border-left-color: var(--border);
 	}
 	li:hover {

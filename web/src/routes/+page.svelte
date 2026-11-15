@@ -7,7 +7,7 @@
 	import SqlTab from '#lib/components/SqlTab.svelte';
 	import StartPage from '#lib/components/StartPage.svelte';
 	import TileMark from '#lib/components/TileMark.svelte';
-	import { envOf } from '#lib/connections.ts';
+	import { colorOf, summary } from '#lib/connections.ts';
 	import { app, type Theme } from '#lib/state.svelte.ts';
 
 	let form = $state<{ editing?: Profile } | null>(null);
@@ -21,7 +21,7 @@
 
 	const tab = $derived(app.activeTab);
 	const tabProfile = $derived(tab ? app.profile(tab.profile) : undefined);
-	const tabEnv = $derived(envOf(tabProfile?.env));
+	const tabColor = $derived(colorOf(tabProfile?.color));
 
 	// Keys from design.md section 12. Alt+T and Alt+W, because browsers keep Ctrl+T and Ctrl+W.
 	function keydown(e: KeyboardEvent) {
@@ -93,7 +93,7 @@
 			{:else}
 				<div class="tabs" role="tablist">
 					{#each app.tabs as t (t.id)}
-						<div class="tab env-{envOf(app.profile(t.profile)?.env).color}" class:on={t.id === app.active}>
+						<div class="tab conn-{colorOf(app.profile(t.profile)?.color)}" class:on={t.id === app.active}>
 							<button role="tab" aria-selected={t.id === app.active} class="tab-label" onclick={() => (app.active = t.id)} title={t.title}>
 								<TileMark tile={app.profile(t.profile)?.tile ?? ''} size={14} />
 								<span class="kind"><Icon name={t.kind === 'sql' ? 'query' : 'table'} size={13} /></span>
@@ -103,12 +103,6 @@
 						</div>
 					{/each}
 				</div>
-				{#if tabProfile && tabEnv.value}
-					<!-- The active connection's environment colour, always with its name in text. -->
-					<div class="env env-{tabEnv.color}" role="status">
-						{tabEnv.label.toUpperCase()} · {tabProfile.name}{#if tabEnv.color === 'production'}: writes ask you to type the connection name{/if}
-					</div>
-				{/if}
 				<div class="panes">
 					{#each app.tabs as t (t.id)}
 						<!-- Tabs stay mounted, so editors and results survive switching. -->
@@ -119,6 +113,17 @@
 				</div>
 			{/if}
 		</main>
+
+		<!-- One footer row under both columns, so the two halves always line up. -->
+		<footer class="side-foot muted" title="tess version">Tessera {app.version}</footer>
+		<footer class="main-foot conn-{tabColor}">
+			{#if tabProfile}
+				<TileMark tile={tabProfile.tile} size={13} />
+				<strong>{tabProfile.name}</strong>
+				<span class="muted">{summary(tabProfile)}</span>
+				{#if tabProfile.readOnly}<span class="badge ro">read-only</span>{/if}
+			{/if}
+		</footer>
 	</div>
 {/if}
 
@@ -134,7 +139,7 @@
 	.shell {
 		display: grid;
 		grid-template-columns: var(--sidebar) 4px 1fr;
-		grid-template-rows: 40px 1fr;
+		grid-template-rows: 40px 1fr var(--footer);
 		height: 100%;
 	}
 	.top {
@@ -172,14 +177,18 @@
 		height: 28px;
 	}
 	.side {
+		grid-row: 2;
 		min-height: 0;
 		border-right: 1px solid var(--border);
 	}
 	.gutter {
+		grid-row: 2 / 4;
 		cursor: col-resize;
 		background: var(--plaster);
 	}
 	.main {
+		grid-row: 2;
+		grid-column: 3;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
@@ -206,9 +215,9 @@
 		background: var(--surface);
 		border-color: var(--border);
 	}
-	/* Tabs on tagged connections carry the environment colour along their top edge. */
-	.tab:not(.env-none) {
-		box-shadow: inset 0 3px 0 var(--env);
+	/* Tabs carry their connection's colour along the top edge. */
+	.tab:not(.conn-none) {
+		box-shadow: inset 0 3px 0 var(--conn);
 	}
 	.tab-label {
 		display: flex;
@@ -247,19 +256,38 @@
 	.close:hover {
 		color: var(--text);
 	}
-	.env {
-		padding: 4px 12px;
-		font-weight: 700;
-		font-size: 12px;
-		letter-spacing: 0.04em;
-		flex: none;
-		background: var(--env);
-		color: var(--on-env);
+	footer {
+		grid-row: 3;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		padding: 0 12px;
+		border-top: 1px solid var(--border);
+		background: var(--surface);
+		font-size: 11px;
+		white-space: nowrap;
+		overflow: hidden;
 	}
-	/* The production banner stays white on #B3261E in both themes, per design.md section 12. */
-	.env.env-production {
-		background: #b3261e;
-		color: #fff;
+	.side-foot {
+		grid-column: 1;
+		border-right: 1px solid var(--border);
+	}
+	/* The active connection's colour fills the footer, softened so text stays readable. */
+	.main-foot {
+		grid-column: 3;
+		background: color-mix(in srgb, var(--conn) 30%, var(--surface));
+		border-top-color: var(--conn);
+		box-shadow: inset 0 1px 0 var(--conn);
+	}
+	.main-foot.conn-none {
+		background: var(--surface);
+		border-top-color: var(--border);
+		box-shadow: none;
+	}
+	.main-foot span {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.panes {
 		flex: 1;
@@ -313,7 +341,20 @@
 	@media (max-width: 720px) {
 		.shell {
 			grid-template-columns: 1fr;
-			grid-template-rows: 40px 40% 0 1fr;
+			grid-template-rows: 40px 40% 0 1fr var(--footer);
+		}
+		.main,
+		.main-foot {
+			grid-column: 1;
+		}
+		.main {
+			grid-row: 4;
+		}
+		.main-foot {
+			grid-row: 5;
+		}
+		.side-foot {
+			display: none;
 		}
 		.side {
 			border-right: 0;
