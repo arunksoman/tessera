@@ -114,13 +114,13 @@
 			{/if}
 		</main>
 
-		<!-- One footer row under both columns, so the two halves always line up. -->
-		<footer class="side-foot muted" title="tess version">Tessera {app.version}</footer>
-		<footer class="main-foot conn-{tabColor}">
+		<!-- One footer across the window, in the active connection's colour. -->
+		<footer class="conn-{tabColor}">
+			<span class="version" title="tess version">Tessera {app.version}</span>
 			{#if tabProfile}
 				<TileMark tile={tabProfile.tile} size={13} />
 				<strong>{tabProfile.name}</strong>
-				<span class="muted">{summary(tabProfile)}</span>
+				<span class="addr">{summary(tabProfile)}</span>
 				{#if tabProfile.readOnly}<span class="badge ro">read-only</span>{/if}
 			{/if}
 		</footer>
@@ -182,7 +182,7 @@
 		border-right: 1px solid var(--border);
 	}
 	.gutter {
-		grid-row: 2 / 4;
+		grid-row: 2;
 		cursor: col-resize;
 		background: var(--plaster);
 	}
@@ -256,38 +256,43 @@
 	.close:hover {
 		color: var(--text);
 	}
+	/* Solid colour, with text colour picked per palette entry for contrast. */
 	footer {
 		grid-row: 3;
+		grid-column: 1 / -1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		min-width: 0;
 		padding: 0 12px;
-		border-top: 1px solid var(--border);
-		background: var(--surface);
+		background: var(--conn);
+		color: var(--on-conn);
 		font-size: 11px;
 		white-space: nowrap;
 		overflow: hidden;
 	}
-	.side-foot {
-		grid-column: 1;
-		border-right: 1px solid var(--border);
-	}
-	/* The active connection's colour fills the footer, softened so text stays readable. */
-	.main-foot {
-		grid-column: 3;
-		background: color-mix(in srgb, var(--conn) 30%, var(--surface));
-		border-top-color: var(--conn);
-		box-shadow: inset 0 1px 0 var(--conn);
-	}
-	.main-foot.conn-none {
+	footer.conn-none {
 		background: var(--surface);
-		border-top-color: var(--border);
-		box-shadow: none;
+		color: var(--muted);
+		border-top: 1px solid var(--border);
 	}
-	.main-foot span {
+	/* The version sits under the sidebar; connection details start where the content does. */
+	.version {
+		flex: none;
+		width: calc(var(--sidebar) - 8px);
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	footer strong,
+	footer :global(.logos) {
+		color: inherit;
+	}
+	footer span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.addr {
+		opacity: 0.85;
 	}
 	.panes {
 		flex: 1;
@@ -343,18 +348,15 @@
 			grid-template-columns: 1fr;
 			grid-template-rows: 40px 40% 0 1fr var(--footer);
 		}
-		.main,
-		.main-foot {
-			grid-column: 1;
-		}
 		.main {
 			grid-row: 4;
+			grid-column: 1;
 		}
-		.main-foot {
+		footer {
 			grid-row: 5;
 		}
-		.side-foot {
-			display: none;
+		.version {
+			width: auto;
 		}
 		.side {
 			border-right: 0;

@@ -154,33 +154,43 @@ textarea {
 	line-height: 16px;
 }
 /* Connection colours, chosen by the user in the connection form. Each sets --conn for the
-   sidebar edge, start page card, tab edge, and footer. */
+   sidebar edge, start page card, tab edge, and footer, and --on-conn for text on it, at AA
+   contrast for the footer's small text in both themes. */
 .conn-none {
 	--conn: transparent;
+	--on-conn: var(--text);
 }
 .conn-red {
-	--conn: light-dark(#d63a3a, #f26b6b);
+	--conn: light-dark(#c62f2f, #f26b6b);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-orange {
-	--conn: light-dark(#d9711a, #f5a35c);
+	--conn: light-dark(#b4570c, #f5a35c);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-yellow {
-	--conn: light-dark(#c29d00, #f0d04f);
+	--conn: light-dark(#e3c234, #f0d04f);
+	--on-conn: light-dark(#1c1f24, #14161a);
 }
 .conn-green {
-	--conn: light-dark(#2e9e5b, #5cc98a);
+	--conn: light-dark(#23824a, #5cc98a);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-cyan {
-	--conn: light-dark(#1591ad, #4fc9e0);
+	--conn: light-dark(#0e7891, #4fc9e0);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-blue {
-	--conn: light-dark(#2f6fd6, #78a6f0);
+	--conn: light-dark(#2d63c8, #78a6f0);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-purple {
-	--conn: light-dark(#8a4fd1, #b88cf0);
+	--conn: light-dark(#7e45c4, #b88cf0);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 .conn-pink {
-	--conn: light-dark(#cf4596, #f08cc8);
+	--conn: light-dark(#b33a83, #f08cc8);
+	--on-conn: light-dark(#ffffff, #14161a);
 }
 
 /* Risk and state badges, which reuse the production and staging colours. */
