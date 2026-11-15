@@ -83,7 +83,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Allowlisted plugin environment, per-connection secret scoping, and plugins off by default in `tess serve`
 - [x] `tess plugin list` and `remove`, and `profile add --set` for plugin form fields
 - [x] Plugin `min_tess` and `max_tess` in the descriptor and manifest, checked at install, load, and every start
-- [x] Show the tess version in `tess version`, the TUI status line and help, and the web header; development builds show their commit
+- [x] Show the tess version in `tess version`, the TUI status line and help, and the web sidebar; development builds show their commit
 - [ ] Meet the out-of-process throughput gate (protocol ceiling measured at about 517k one-column rows/s; see spike-results.md)
 - [ ] Carry `Env.Dial` and the `Completer` facet across the protocol
 - [x] Refuse downgrades to an older signed version
@@ -208,6 +208,10 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [ ] Every screen and component is tested in both themes, including the AA contrast check
 - [x] App shell: tree, tabs, resizable panes, status bar, environment banner
 - [x] Connection tiles with color, glyph, and label
+- [x] Start page with saved and recent connections
+- [x] Connection colours in the web app, chosen from a fixed palette and stored as `color` in the profile; environment tags stay for the TUI and the safety rules
+- [x] Connection form: database type picker with logos, grouped fields, TLS options collapsed, and a password reveal
+- [x] Inline SVG icons (Lucide paths and Simple Icons database logos, licences in `web/src/lib/icons`) instead of text glyphs
 - [x] CodeMirror editor with tabs and SQL keyword completion
 - [ ] Engine-driven autocomplete and query history in the editor
 - [x] Virtualized grid with keyboard navigation, from the Phase 0 prototype

@@ -41,6 +41,7 @@ func (f *formField) text() string {
 type connForm struct {
 	m       *Model
 	editing string // the profile being edited, if any
+	color   string // set in the web app; the TUI keeps it unchanged
 	fields  []*formField
 	at      int
 	err     string
@@ -83,7 +84,7 @@ func (m *Model) buildForm(editing string, p store.Profile) *connForm {
 			p.Tile = ids[0]
 		}
 	}
-	f := &connForm{m: m, editing: editing}
+	f := &connForm{m: m, editing: editing, color: p.Color}
 	f.rebuild(p)
 	return f
 }
@@ -123,7 +124,7 @@ func (f *connForm) focus() tea.Cmd {
 
 // profile reads the form back. Secrets are returned apart, since they never enter a profile.
 func (f *connForm) profile() (store.Profile, map[string]string) {
-	p := store.Profile{Values: map[string]string{}}
+	p := store.Profile{Color: f.color, Values: map[string]string{}}
 	secrets := map[string]string{}
 	for _, fl := range f.fields {
 		v := fl.text()

@@ -1,4 +1,5 @@
 import { api, randomId, type Profile, type Ref, type Tile } from './api';
+import { parseRecent, renameRecent, touchRecent, type Recent } from './connections.ts';
 
 export type Tab =
 	| { id: string; kind: 'sql'; profile: string; title: string; sql: string }
@@ -19,6 +20,10 @@ class AppState {
 	treeVersion = $state<Record<string, number>>({});
 	theme = $state<Theme>(readTheme());
 	toast = $state<{ text: string; kind: 'ok' | 'error' } | null>(null);
+	/** Connections used most recently, newest first, kept in this browser only. */
+	recent = $state<Recent[]>(readRecent());
+	/** Connections expanded in the sidebar tree. */
+	expanded = $state<Record<string, boolean>>({});
 	private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 	activeTab = $derived(this.tabs.find((t) => t.id === this.active) ?? null);
@@ -47,7 +52,14 @@ class AppState {
 		return this.profiles.find((p) => p.name === name);
 	}
 
+	/** Opens a connection from the start page: a SQL tab, with its tree expanded. */
+	connect(profile: string) {
+		this.expanded[profile] = true;
+		this.openSQL(profile);
+	}
+
 	openSQL(profile: string, sql = '') {
+		this.used(profile);
 		const n = this.tabs.filter((t) => t.kind === 'sql' && t.profile === profile).length + 1;
 		const tab: Tab = { id: randomId(), kind: 'sql', profile, title: `${profile} · Query ${n}`, sql };
 		this.tabs.push(tab);
@@ -55,6 +67,7 @@ class AppState {
 	}
 
 	openBrowse(profile: string, ref: Ref) {
+		this.used(profile);
 		const key = JSON.stringify(ref);
 		const open = this.tabs.find((t) => t.kind === 'browse' && t.profile === profile && JSON.stringify(t.ref) === key);
 		if (open) {
@@ -84,6 +97,31 @@ class AppState {
 		this.active = this.tabs[(i + step + this.tabs.length) % this.tabs.length].id;
 	}
 
+	/** Records a connection as used now. */
+	used(profile: string) {
+		this.saveRecent(touchRecent(this.recent, profile, Date.now()));
+	}
+
+	renamed(from: string, to: string) {
+		this.saveRecent(renameRecent(this.recent, from, to));
+		if (this.expanded[from]) this.expanded[to] = true;
+		delete this.expanded[from];
+	}
+
+	forget(profile: string) {
+		this.saveRecent(this.recent.filter((r) => r.name !== profile));
+		delete this.expanded[profile];
+	}
+
+	private saveRecent(list: Recent[]) {
+		this.recent = list;
+		try {
+			localStorage.setItem(recentKey, JSON.stringify(list));
+		} catch {
+			// storage blocked: the list lasts for this page only
+		}
+	}
+
 	refreshTree(profile: string) {
 		this.treeVersion[profile] = (this.treeVersion[profile] ?? 0) + 1;
 	}
@@ -104,6 +142,16 @@ class AppState {
 		this.toast = { text, kind };
 		clearTimeout(this.toastTimer);
 		this.toastTimer = setTimeout(() => (this.toast = null), kind === 'error' ? 6000 : 3000);
+	}
+}
+
+const recentKey = 'tessera-recent';
+
+function readRecent(): Recent[] {
+	try {
+		return parseRecent(localStorage.getItem(recentKey));
+	} catch {
+		return [];
 	}
 }
 

@@ -26,6 +26,8 @@
 	--font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 	--radius: 4px;
 	--row: 28px;
+	/* Height of the footer row under the sidebar and the tabs. */
+	--footer: 26px;
 }
 :root[data-theme='light'] {
 	color-scheme: light;
@@ -151,6 +153,47 @@ textarea {
 	text-transform: uppercase;
 	line-height: 16px;
 }
+/* Connection colours, chosen by the user in the connection form. Each sets --conn for the
+   sidebar edge, start page card, tab edge, and footer, and --on-conn for text on it, at AA
+   contrast for the footer's small text in both themes. */
+.conn-none {
+	--conn: transparent;
+	--on-conn: var(--text);
+}
+.conn-red {
+	--conn: light-dark(#c62f2f, #f26b6b);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-orange {
+	--conn: light-dark(#b4570c, #f5a35c);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-yellow {
+	--conn: light-dark(#e3c234, #f0d04f);
+	--on-conn: light-dark(#1c1f24, #14161a);
+}
+.conn-green {
+	--conn: light-dark(#23824a, #5cc98a);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-cyan {
+	--conn: light-dark(#0e7891, #4fc9e0);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-blue {
+	--conn: light-dark(#2d63c8, #78a6f0);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-purple {
+	--conn: light-dark(#7e45c4, #b88cf0);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+.conn-pink {
+	--conn: light-dark(#b33a83, #f08cc8);
+	--on-conn: light-dark(#ffffff, #14161a);
+}
+
+/* Risk and state badges, which reuse the production and staging colours. */
 .badge.production {
 	background: var(--danger);
 	color: #fff;
@@ -158,11 +201,6 @@ textarea {
 .badge.staging {
 	background: var(--warning);
 	color: var(--on-accent);
-}
-.badge.development {
-	background: var(--surface-2);
-	color: var(--muted);
-	border: 1px solid var(--border);
 }
 .badge.ro {
 	border: 1px solid var(--border);

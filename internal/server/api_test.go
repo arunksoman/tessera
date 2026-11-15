@@ -134,6 +134,7 @@ type profileOut struct {
 	Name      string            `json:"name"`
 	Tile      string            `json:"tile"`
 	Env       string            `json:"env"`
+	Color     string            `json:"color"`
 	ReadOnly  bool              `json:"readOnly"`
 	Values    map[string]string `json:"values"`
 	Secrets   map[string]bool   `json:"secrets"`
@@ -145,7 +146,7 @@ type profileOut struct {
 func TestProfileLifecycle(t *testing.T) {
 	f := newFixture(t)
 	f.login()
-	body := map[string]any{"tile": "fake", "env": "production", "values": map[string]string{"host": "db", "port": "5432", "mode": "weak"},
+	body := map[string]any{"tile": "fake", "env": "production", "color": "purple", "values": map[string]string{"host": "db", "port": "5432", "mode": "weak"},
 		"secrets": map[string]string{"password": "hunter2"}}
 	var saved profileOut
 	if code := f.call("PUT", "/api/profiles/app", body, &saved); code != 200 {
@@ -158,7 +159,7 @@ func TestProfileLifecycle(t *testing.T) {
 	var list []profileOut
 	f.call("GET", "/api/profiles", nil, &list)
 	if len(list) != 1 || list[0].Name != "app" || list[0].Values["host"] != "db" || !list[0].Secrets["password"] ||
-		list[0].Env != "production" || len(list[0].Warnings) != 1 {
+		list[0].Env != "production" || list[0].Color != "purple" || len(list[0].Warnings) != 1 {
 		t.Fatalf("%+v", list)
 	}
 	raw, _ := json.Marshal(list)
@@ -209,6 +210,9 @@ func TestProfileValidation(t *testing.T) {
 		{"int not a number", map[string]any{"tile": "fake", "values": map[string]string{"host": "h", "port": "5432; x"}}},
 		{"enum not an option", map[string]any{"tile": "fake", "values": map[string]string{"host": "h", "mode": "other"}}},
 		{"bad env", map[string]any{"tile": "fake", "env": "prod", "values": map[string]string{"host": "h"}}},
+		// Colours are names from a fixed palette, never CSS, so a profile cannot inject styles.
+		{"bad color", map[string]any{"tile": "fake", "color": "#ff0000", "values": map[string]string{"host": "h"}}},
+		{"css in color", map[string]any{"tile": "fake", "color": "red;background:url(x)", "values": map[string]string{"host": "h"}}},
 		{"unknown key", map[string]any{"tile": "fake", "values": map[string]string{"host": "h"}, "dsn": "postgres://"}},
 		{"rename from missing", map[string]any{"from": "ghost", "tile": "fake", "values": map[string]string{"host": "h"}}},
 	}

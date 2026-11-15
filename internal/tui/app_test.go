@@ -71,6 +71,16 @@ func TestFormIsRenderedFromTheTileAndSaves(t *testing.T) {
 	}
 }
 
+// The web app sets a profile's colour; editing the profile in the TUI must keep it.
+func TestEditFormKeepsColor(t *testing.T) {
+	a := start(t, newFakeDB(1), setup{})
+	f := a.m.buildForm("app", store.Profile{Name: "app", Tile: "fake", Env: "staging", Color: "blue", Values: map[string]string{"host": "h"}})
+	p, _ := f.profile()
+	if p.Color != "blue" || p.Env != "staging" {
+		t.Fatalf("profile = %+v", p)
+	}
+}
+
 func TestFormValidates(t *testing.T) {
 	a := start(t, newFakeDB(1), setup{})
 	a.see("New connection")

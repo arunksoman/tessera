@@ -692,7 +692,9 @@ The production banner is white on `#B3261E` (6.5:1). Danger is reserved and is n
 
 ### Tiles as identity
 
-Each connection gets a tile: color and glyph, with defaults by plugin and user override. The tile appears in the tree, tab, status bar, and palette, so a user always sees which database a tab belongs to. **Color is never the only signal:** every tile also has a glyph and a label, and each environment tag has text.
+Each connection gets a tile: color and glyph, with defaults by plugin and user override. The tile appears in the tree, tab, status bar, and palette, so a user always sees which database a tab belongs to. **Color is never the only signal:** every tile also has a glyph and a label, and each environment tag has text in the TUI.
+
+The web app does not show environment names. Instead each connection can have a colour from a fixed palette (red, orange, yellow, green, cyan, blue, purple, pink), stored by name as `color` in the profile. What a colour means is up to the user. The environment tag still drives the safety rules, so a production connection asks for its name before a write in every front-end, and the confirmation dialog says why.
 
 ### Typography and layout
 
@@ -710,7 +712,7 @@ Light and dark are both required for all frontend work. The theme follows the sy
 | Element | Web / desktop | TUI |
 |---|---|---|
 | Tile | SVG glyph on a colored square | `▚` or a plugin glyph, colored |
-| Environment | Full-width banner with label | Full-width colored status line with label |
+| Environment | Connection colour chosen by the user, on tabs, the sidebar, and the footer; no environment text | Full-width colored status line with label |
 | Panes | Resizable, plaster gaps | Split panes, rounded borders |
 | Color | Theme tokens | Truecolor, degraded to 256 and 16 colors; `NO_COLOR` respected. Lip Gloss v2 drops `AdaptiveColor`, so query the background through Bubble Tea and choose the theme. |
 

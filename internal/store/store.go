@@ -39,9 +39,12 @@ func Dir() (string, error) {
 
 // Profile is a saved connection. Secrets live in the vault, never here.
 type Profile struct {
-	Name     string `toml:"-"`
-	Tile     string `toml:"tile"`
-	Env      string `toml:"env,omitempty"` // "production" raises confirmations
+	Name string `toml:"-"`
+	Tile string `toml:"tile"`
+	Env  string `toml:"env,omitempty"` // "production" raises confirmations
+	// Color is the web app's marker for this connection, a palette name such as "green".
+	// It is only a reminder chosen by the user; safety rules read Env, never Color.
+	Color    string `toml:"color,omitempty"`
 	ReadOnly bool   `toml:"read_only,omitempty"`
 	// NoHistory stops recording statements for this profile. Audit still records writes.
 	NoHistory bool              `toml:"no_history,omitempty"`

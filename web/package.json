@@ -11,7 +11,7 @@
     "build": "vite build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "node scripts/lint.mjs",
-    "test": "node --test \"scripts/*.test.mjs\""
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test \"scripts/*.test.mjs\""
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",

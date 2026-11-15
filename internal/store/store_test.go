@@ -14,7 +14,7 @@ func TestProfilesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	p := Profile{Name: "dev", Tile: "postgres", Env: "production", ReadOnly: true, Values: map[string]string{"host": "h", "port": "5432"}}
+	p := Profile{Name: "dev", Tile: "postgres", Env: "production", Color: "green", ReadOnly: true, Values: map[string]string{"host": "h", "port": "5432"}}
 	if err := s.SaveProfile(p); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestProfilesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Tile != "postgres" || !got.ReadOnly || got.Env != "production" || got.Values["port"] != "5432" {
+	if got.Tile != "postgres" || !got.ReadOnly || got.Env != "production" || got.Color != "green" || got.Values["port"] != "5432" {
 		t.Fatalf("%+v", got)
 	}
 	if err := s2.DeleteProfile("dev"); err != nil {

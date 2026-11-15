@@ -3,8 +3,11 @@
 	import BrowseTab from '#lib/components/BrowseTab.svelte';
 	import ConnectionForm from '#lib/components/ConnectionForm.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
+	import Icon from '#lib/components/Icon.svelte';
 	import SqlTab from '#lib/components/SqlTab.svelte';
+	import StartPage from '#lib/components/StartPage.svelte';
 	import TileMark from '#lib/components/TileMark.svelte';
+	import { colorOf, summary } from '#lib/connections.ts';
 	import { app, type Theme } from '#lib/state.svelte.ts';
 
 	let form = $state<{ editing?: Profile } | null>(null);
@@ -18,6 +21,7 @@
 
 	const tab = $derived(app.activeTab);
 	const tabProfile = $derived(tab ? app.profile(tab.profile) : undefined);
+	const tabColor = $derived(colorOf(tabProfile?.color));
 
 	// Keys from design.md section 12. Alt+T and Alt+W, because browsers keep Ctrl+T and Ctrl+W.
 	function keydown(e: KeyboardEvent) {
@@ -65,7 +69,6 @@
 				<i></i><i></i><i></i><i class="n"></i><i></i><i class="n"></i><i class="n"></i><i></i><i class="n"></i>
 			</span>
 			<strong>Tessera</strong>
-			{#if app.version}<span class="muted version" title="tess version">{app.version}</span>{/if}
 			<span class="spacer"></span>
 			<label class="theme">
 				<span class="muted">Theme</span>
@@ -86,44 +89,20 @@
 			{#if app.loadError}
 				<div class="pad"><div class="error-box" role="alert">Could not reach tess serve: {app.loadError}</div></div>
 			{:else if app.tabs.length === 0}
-				<div class="center">
-					<div class="card">
-						{#if loaded && app.profiles.length === 0}
-							<h1>Welcome to Tessera</h1>
-							<p>Add a PostgreSQL, MySQL, or MariaDB connection to start browsing tables and running SQL.</p>
-							<button class="btn primary" onclick={() => (form = {})}>＋ Add a connection</button>
-						{:else if loaded}
-							<h1>Pick something to open</h1>
-							<p>Expand a connection on the left and click a table to browse it, or open a SQL tab.</p>
-							<div class="quick">
-								{#each app.profiles as p (p.name)}
-									<button class="btn" onclick={() => app.openSQL(p.name)}><TileMark tile={p.tile} size={16} /> SQL on {p.name}</button>
-								{/each}
-							</div>
-							<p class="muted keys">Alt+T new SQL tab · Alt+W close tab · Alt+[ and Alt+] switch tabs · Ctrl+Enter run · Esc cancel</p>
-						{:else}
-							<p class="muted">Loading…</p>
-						{/if}
-					</div>
-				</div>
+				<StartPage {loaded} onnew={() => (form = {})} onedit={(p) => (form = { editing: p })} />
 			{:else}
 				<div class="tabs" role="tablist">
 					{#each app.tabs as t (t.id)}
-						<div class="tab" class:on={t.id === app.active}>
+						<div class="tab conn-{colorOf(app.profile(t.profile)?.color)}" class:on={t.id === app.active}>
 							<button role="tab" aria-selected={t.id === app.active} class="tab-label" onclick={() => (app.active = t.id)} title={t.title}>
 								<TileMark tile={app.profile(t.profile)?.tile ?? ''} size={14} />
-								<span class="kind" aria-hidden="true">{t.kind === 'sql' ? '⌨' : '▦'}</span>
+								<span class="kind"><Icon name={t.kind === 'sql' ? 'query' : 'table'} size={13} /></span>
 								<span class="text">{t.kind === 'browse' ? `${t.profile} · ${t.title}` : t.title}</span>
 							</button>
-							<button class="close" aria-label="Close {t.title}" onclick={() => app.closeTab(t.id)}>✕</button>
+							<button class="close" aria-label="Close {t.title}" onclick={() => app.closeTab(t.id)}><Icon name="close" size={13} /></button>
 						</div>
 					{/each}
 				</div>
-				{#if tabProfile?.env === 'production'}
-					<div class="env production" role="status">PRODUCTION · {tabProfile.name}: writes ask you to type the connection name</div>
-				{:else if tabProfile?.env === 'staging'}
-					<div class="env staging" role="status">STAGING · {tabProfile.name}</div>
-				{/if}
 				<div class="panes">
 					{#each app.tabs as t (t.id)}
 						<!-- Tabs stay mounted, so editors and results survive switching. -->
@@ -134,6 +113,17 @@
 				</div>
 			{/if}
 		</main>
+
+		<!-- One footer across the window, in the active connection's colour. -->
+		<footer class="conn-{tabColor}">
+			<span class="version" title="tess version">Tessera {app.version}</span>
+			{#if tabProfile}
+				<TileMark tile={tabProfile.tile} size={13} />
+				<strong>{tabProfile.name}</strong>
+				<span class="addr">{summary(tabProfile)}</span>
+				{#if tabProfile.readOnly}<span class="badge ro">read-only</span>{/if}
+			{/if}
+		</footer>
 	</div>
 {/if}
 
@@ -149,7 +139,7 @@
 	.shell {
 		display: grid;
 		grid-template-columns: var(--sidebar) 4px 1fr;
-		grid-template-rows: 40px 1fr;
+		grid-template-rows: 40px 1fr var(--footer);
 		height: 100%;
 	}
 	.top {
@@ -187,14 +177,18 @@
 		height: 28px;
 	}
 	.side {
+		grid-row: 2;
 		min-height: 0;
 		border-right: 1px solid var(--border);
 	}
 	.gutter {
+		grid-row: 2;
 		cursor: col-resize;
 		background: var(--plaster);
 	}
 	.main {
+		grid-row: 2;
+		grid-column: 3;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
@@ -221,6 +215,10 @@
 		background: var(--surface);
 		border-color: var(--border);
 	}
+	/* Tabs carry their connection's colour along the top edge. */
+	.tab:not(.conn-none) {
+		box-shadow: inset 0 3px 0 var(--conn);
+	}
 	.tab-label {
 		display: flex;
 		align-items: center;
@@ -236,7 +234,8 @@
 		color: var(--text);
 	}
 	.kind {
-		font-size: 11px;
+		display: inline-flex;
+		color: var(--muted);
 	}
 	.text {
 		overflow: hidden;
@@ -244,6 +243,9 @@
 		white-space: nowrap;
 	}
 	.close {
+		display: inline-flex;
+		align-items: center;
+		align-self: stretch;
 		border: 0;
 		background: none;
 		cursor: pointer;
@@ -254,20 +256,43 @@
 	.close:hover {
 		color: var(--text);
 	}
-	.env {
-		padding: 4px 12px;
-		font-weight: 700;
-		font-size: 12px;
-		letter-spacing: 0.04em;
+	/* Solid colour, with text colour picked per palette entry for contrast. */
+	footer {
+		grid-row: 3;
+		grid-column: 1 / -1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		padding: 0 12px;
+		background: var(--conn);
+		color: var(--on-conn);
+		font-size: 11px;
+		white-space: nowrap;
+		overflow: hidden;
+	}
+	footer.conn-none {
+		background: var(--surface);
+		color: var(--muted);
+		border-top: 1px solid var(--border);
+	}
+	/* The version sits under the sidebar; connection details start where the content does. */
+	.version {
 		flex: none;
+		width: calc(var(--sidebar) - 8px);
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-	.env.production {
-		background: #b3261e;
-		color: #fff;
+	footer strong,
+	footer :global(.logos) {
+		color: inherit;
 	}
-	.env.staging {
-		background: var(--warning);
-		color: var(--on-accent);
+	footer span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.addr {
+		opacity: 0.85;
 	}
 	.panes {
 		flex: 1;
@@ -300,15 +325,6 @@
 		margin: 0 0 8px;
 		font-size: 18px;
 	}
-	.quick {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin: 12px 0;
-	}
-	.keys {
-		font-size: 12px;
-	}
 	.pad {
 		padding: 16px;
 	}
@@ -330,7 +346,17 @@
 	@media (max-width: 720px) {
 		.shell {
 			grid-template-columns: 1fr;
-			grid-template-rows: 40px 40% 0 1fr;
+			grid-template-rows: 40px 40% 0 1fr var(--footer);
+		}
+		.main {
+			grid-row: 4;
+			grid-column: 1;
+		}
+		footer {
+			grid-row: 5;
+		}
+		.version {
+			width: auto;
 		}
 		.side {
 			border-right: 0;
