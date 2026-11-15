@@ -1,5 +1,15 @@
 # Builds tess with the web app embedded. `make` alone builds; `make help` lists targets.
-# Needs Go and, for the web app, Node.js. On Windows, run it from Git Bash.
+# Needs Go and, for the web app, Node.js. On Windows it also needs Git for Windows.
+
+# Recipes are POSIX shell. On Windows, make falls back to cmd.exe when no sh is on PATH, as
+# in PowerShell, so use the sh and tools (touch, rm, grep, sed) that ship with Git.
+ifeq ($(OS),Windows_NT)
+GIT_ROOT := $(patsubst %/mingw64/libexec/git-core,%,$(subst \,/,$(shell git --exec-path)))
+ifneq ($(GIT_ROOT),)
+SHELL := $(GIT_ROOT)/usr/bin/sh.exe
+export PATH := $(GIT_ROOT)/usr/bin;$(PATH)
+endif
+endif
 
 GO      ?= go
 NPM     ?= npm
