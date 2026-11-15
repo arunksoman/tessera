@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	let {
 		title,
@@ -28,7 +29,7 @@
 >
 	<header>
 		<h2>{title}</h2>
-		<button class="btn ghost icon" aria-label="Close" onclick={onclose}>✕</button>
+		<button class="btn ghost icon" aria-label="Close" onclick={onclose}><Icon name="close" /></button>
 	</header>
 	<div class="body">{@render children()}</div>
 	{#if footer}<footer>{@render footer()}</footer>{/if}
@@ -70,6 +71,8 @@
 	.body {
 		padding: 16px;
 		overflow: auto;
+		/* Lets the body, not the whole dialog, scroll, so the title and buttons stay in view. */
+		min-height: 0;
 	}
 	footer {
 		display: flex;

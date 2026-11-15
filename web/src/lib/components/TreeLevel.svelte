@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { api, type Ref, type TreeNode } from '#lib/api.ts';
 	import { app } from '#lib/state.svelte.ts';
+	import type { IconName } from '#lib/icons/index.ts';
+	import Icon from './Icon.svelte';
 	import Self from './TreeLevel.svelte';
 
 	// One level of the object tree, loaded a page at a time.
@@ -32,7 +34,7 @@
 	});
 
 	const key = (n: TreeNode) => JSON.stringify(n.ref);
-	const icon: Record<string, string> = { database: '◫', schema: '▤', table: '▦', view: '◇', 'materialized view': '◆' };
+	const icon: Record<string, IconName> = { database: 'database', schema: 'schema', table: 'table', view: 'view', 'materialized view': 'matview' };
 
 	function activate(n: TreeNode) {
 		if (n.browsable) app.openBrowse(profile, n.ref);
@@ -46,13 +48,13 @@
 			<div class="row" style:--depth={depth}>
 				{#if n.hasChildren}
 					<button class="twisty" aria-label={open[key(n)] ? 'Collapse' : 'Expand'} onclick={() => (open[key(n)] = !open[key(n)])}>
-						{open[key(n)] ? '▾' : '▸'}
+						<Icon name={open[key(n)] ? 'chevronDown' : 'chevronRight'} size={14} />
 					</button>
 				{:else}
 					<span class="twisty"></span>
 				{/if}
 				<button class="label" title="{n.kind}: {n.label}" onclick={() => activate(n)}>
-					<span class="icon" aria-hidden="true">{icon[n.kind] ?? '•'}</span>
+					<span class="icon" aria-hidden="true">{#if icon[n.kind]}<Icon name={icon[n.kind]} size={14} />{:else}•{/if}</span>
 					<span class="text">{n.label}</span>
 				</button>
 			</div>
@@ -83,6 +85,9 @@
 		background: var(--hover);
 	}
 	.twisty {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		width: 16px;
 		flex: none;
 		border: 0;
@@ -106,9 +111,11 @@
 		padding: 0 4px;
 	}
 	.icon {
+		display: inline-flex;
+		justify-content: center;
+		flex: none;
 		color: var(--muted);
 		width: 14px;
-		text-align: center;
 	}
 	.text {
 		overflow: hidden;

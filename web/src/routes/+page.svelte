@@ -3,8 +3,11 @@
 	import BrowseTab from '#lib/components/BrowseTab.svelte';
 	import ConnectionForm from '#lib/components/ConnectionForm.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
+	import Icon from '#lib/components/Icon.svelte';
 	import SqlTab from '#lib/components/SqlTab.svelte';
+	import StartPage from '#lib/components/StartPage.svelte';
 	import TileMark from '#lib/components/TileMark.svelte';
+	import { envOf } from '#lib/connections.ts';
 	import { app, type Theme } from '#lib/state.svelte.ts';
 
 	let form = $state<{ editing?: Profile } | null>(null);
@@ -18,6 +21,7 @@
 
 	const tab = $derived(app.activeTab);
 	const tabProfile = $derived(tab ? app.profile(tab.profile) : undefined);
+	const tabEnv = $derived(envOf(tabProfile?.env));
 
 	// Keys from design.md section 12. Alt+T and Alt+W, because browsers keep Ctrl+T and Ctrl+W.
 	function keydown(e: KeyboardEvent) {
@@ -65,7 +69,6 @@
 				<i></i><i></i><i></i><i class="n"></i><i></i><i class="n"></i><i class="n"></i><i></i><i class="n"></i>
 			</span>
 			<strong>Tessera</strong>
-			{#if app.version}<span class="muted version" title="tess version">{app.version}</span>{/if}
 			<span class="spacer"></span>
 			<label class="theme">
 				<span class="muted">Theme</span>
@@ -86,43 +89,25 @@
 			{#if app.loadError}
 				<div class="pad"><div class="error-box" role="alert">Could not reach tess serve: {app.loadError}</div></div>
 			{:else if app.tabs.length === 0}
-				<div class="center">
-					<div class="card">
-						{#if loaded && app.profiles.length === 0}
-							<h1>Welcome to Tessera</h1>
-							<p>Add a PostgreSQL, MySQL, or MariaDB connection to start browsing tables and running SQL.</p>
-							<button class="btn primary" onclick={() => (form = {})}>＋ Add a connection</button>
-						{:else if loaded}
-							<h1>Pick something to open</h1>
-							<p>Expand a connection on the left and click a table to browse it, or open a SQL tab.</p>
-							<div class="quick">
-								{#each app.profiles as p (p.name)}
-									<button class="btn" onclick={() => app.openSQL(p.name)}><TileMark tile={p.tile} size={16} /> SQL on {p.name}</button>
-								{/each}
-							</div>
-							<p class="muted keys">Alt+T new SQL tab · Alt+W close tab · Alt+[ and Alt+] switch tabs · Ctrl+Enter run · Esc cancel</p>
-						{:else}
-							<p class="muted">Loading…</p>
-						{/if}
-					</div>
-				</div>
+				<StartPage {loaded} onnew={() => (form = {})} onedit={(p) => (form = { editing: p })} />
 			{:else}
 				<div class="tabs" role="tablist">
 					{#each app.tabs as t (t.id)}
-						<div class="tab" class:on={t.id === app.active}>
+						<div class="tab env-{envOf(app.profile(t.profile)?.env).color}" class:on={t.id === app.active}>
 							<button role="tab" aria-selected={t.id === app.active} class="tab-label" onclick={() => (app.active = t.id)} title={t.title}>
 								<TileMark tile={app.profile(t.profile)?.tile ?? ''} size={14} />
-								<span class="kind" aria-hidden="true">{t.kind === 'sql' ? '⌨' : '▦'}</span>
+								<span class="kind"><Icon name={t.kind === 'sql' ? 'query' : 'table'} size={13} /></span>
 								<span class="text">{t.kind === 'browse' ? `${t.profile} · ${t.title}` : t.title}</span>
 							</button>
-							<button class="close" aria-label="Close {t.title}" onclick={() => app.closeTab(t.id)}>✕</button>
+							<button class="close" aria-label="Close {t.title}" onclick={() => app.closeTab(t.id)}><Icon name="close" size={13} /></button>
 						</div>
 					{/each}
 				</div>
-				{#if tabProfile?.env === 'production'}
-					<div class="env production" role="status">PRODUCTION · {tabProfile.name}: writes ask you to type the connection name</div>
-				{:else if tabProfile?.env === 'staging'}
-					<div class="env staging" role="status">STAGING · {tabProfile.name}</div>
+				{#if tabProfile && tabEnv.value}
+					<!-- The active connection's environment colour, always with its name in text. -->
+					<div class="env env-{tabEnv.color}" role="status">
+						{tabEnv.label.toUpperCase()} · {tabProfile.name}{#if tabEnv.color === 'production'}: writes ask you to type the connection name{/if}
+					</div>
 				{/if}
 				<div class="panes">
 					{#each app.tabs as t (t.id)}
@@ -221,6 +206,10 @@
 		background: var(--surface);
 		border-color: var(--border);
 	}
+	/* Tabs on tagged connections carry the environment colour along their top edge. */
+	.tab:not(.env-none) {
+		box-shadow: inset 0 3px 0 var(--env);
+	}
 	.tab-label {
 		display: flex;
 		align-items: center;
@@ -236,7 +225,8 @@
 		color: var(--text);
 	}
 	.kind {
-		font-size: 11px;
+		display: inline-flex;
+		color: var(--muted);
 	}
 	.text {
 		overflow: hidden;
@@ -244,6 +234,9 @@
 		white-space: nowrap;
 	}
 	.close {
+		display: inline-flex;
+		align-items: center;
+		align-self: stretch;
 		border: 0;
 		background: none;
 		cursor: pointer;
@@ -260,14 +253,13 @@
 		font-size: 12px;
 		letter-spacing: 0.04em;
 		flex: none;
+		background: var(--env);
+		color: var(--on-env);
 	}
-	.env.production {
+	/* The production banner stays white on #B3261E in both themes, per design.md section 12. */
+	.env.env-production {
 		background: #b3261e;
 		color: #fff;
-	}
-	.env.staging {
-		background: var(--warning);
-		color: var(--on-accent);
 	}
 	.panes {
 		flex: 1;
@@ -299,15 +291,6 @@
 	.card h1 {
 		margin: 0 0 8px;
 		font-size: 18px;
-	}
-	.quick {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin: 12px 0;
-	}
-	.keys {
-		font-size: 12px;
 	}
 	.pad {
 		padding: 16px;

@@ -151,6 +151,25 @@ textarea {
 	text-transform: uppercase;
 	line-height: 16px;
 }
+/* Environment colours. The colour is a quick cue; a text label always goes with it. Danger
+   is reserved for production and is never a tile colour. */
+.env-none {
+	--env: transparent;
+	--on-env: var(--text);
+}
+.env-development {
+	--env: var(--success);
+	--on-env: var(--on-accent);
+}
+.env-staging {
+	--env: var(--warning);
+	--on-env: var(--on-accent);
+}
+.env-production {
+	--env: var(--danger);
+	--on-env: #fff;
+}
+/* Risk and state badges, which reuse the production and staging colours. */
 .badge.production {
 	background: var(--danger);
 	color: #fff;
@@ -159,10 +178,9 @@ textarea {
 	background: var(--warning);
 	color: var(--on-accent);
 }
-.badge.development {
-	background: var(--surface-2);
-	color: var(--muted);
-	border: 1px solid var(--border);
+.badge.env {
+	background: var(--env);
+	color: var(--on-env);
 }
 .badge.ro {
 	border: 1px solid var(--border);
