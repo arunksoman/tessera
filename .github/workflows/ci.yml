@@ -66,7 +66,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Scan npm dependencies for vulnerabilities
-        uses: google/osv-scanner-action/osv-scanner-action@v2.7.0 # dependabot will pin to a SHA
+        uses: google/osv-scanner-action/osv-scanner-action@v2.7.1 # dependabot will pin to a SHA
         with:
           scan-args: |-
             --config=osv-scanner.toml
