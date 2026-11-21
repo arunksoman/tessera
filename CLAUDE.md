@@ -51,7 +51,7 @@ Check the built app under the real CSP in three browsers with `PLAYWRIGHT_DIR=<d
 
 A release comes from pushing an annotated tag like `v0.1.0` on a commit in `main`. The tag message becomes the release notes, and `scripts/release-build.sh` sets the version through `-X main.version`.
 
-Compose ports and logins are in [README.md](README.md). Alpine images are the default, except real MySQL, which has no Alpine image. MariaDB is built from `docker/mariadb-alpine`, because no official Alpine image exists either.
+Compose ports and logins are in [README.md](README.md). Each server has `tessera_test`, the tiny fixture tests depend on, and `sakila`, a vendored sample database for manual use; after changing fixtures run `docker compose down -v` so init scripts run again. Alpine images are the default, except real MySQL, which has no Alpine image. MariaDB is built from `docker/mariadb-alpine`, because no official Alpine image exists either.
 
 ## Architecture
 

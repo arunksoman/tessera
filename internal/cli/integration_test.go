@@ -16,11 +16,16 @@ var servers = []struct{ name, tile, port, tlsMode string }{
 }
 
 func each(t *testing.T, extra []string, f func(t *testing.T)) {
+	eachIn(t, "tessera_test", extra, f)
+}
+
+// eachIn runs f against every server with a "dev" profile on the given database.
+func eachIn(t *testing.T, database string, extra []string, f func(t *testing.T)) {
 	for _, s := range servers {
 		t.Run(s.name, func(t *testing.T) {
 			env(t)
 			args := append([]string{"profile", "add", "dev", "--tile", s.tile, "--host", "127.0.0.1", "--port", s.port,
-				"--user", "tessera", "--database", "tessera_test", "--tls", s.tlsMode, "--password-stdin"}, extra...)
+				"--user", "tessera", "--database", database, "--tls", s.tlsMode, "--password-stdin"}, extra...)
 			if r := tess("tessera_dev\n", args...); r.code != 0 {
 				t.Fatalf("%+v", r)
 			}
@@ -58,6 +63,31 @@ func TestEndToEndFormats(t *testing.T) {
 		}
 		if out[0]["total"].(json.Number).String() != "12345678901234.5678" {
 			t.Fatalf("decimal changed: %v", out[0])
+		}
+	})
+}
+
+// The compose databases also load the Sakila sample database, a realistic schema with
+// views, enums, and thousands of rows, for trying tess by hand.
+func TestEndToEndSakila(t *testing.T) {
+	eachIn(t, "sakila", nil, func(t *testing.T) {
+		const q = `SELECT
+  (SELECT count(*) FROM film) AS films,
+  (SELECT count(*) FROM actor) AS actors,
+  (SELECT count(*) FROM rental) AS rentals,
+  (SELECT count(*) FROM film_actor fa JOIN actor a ON a.actor_id = fa.actor_id
+     WHERE a.first_name = 'PENELOPE' AND a.last_name = 'GUINESS') AS penelope,
+  (SELECT count(*) FROM film_list) AS listed`
+		r := tess("", "query", "-c", "dev", "-f", "csv", q)
+		recs, err := csv.NewReader(strings.NewReader(r.stdout)).ReadAll()
+		if err != nil || r.code != 0 || len(recs) != 2 {
+			t.Fatalf("%v %+v", err, r)
+		}
+		if got := strings.Join(recs[1][:4], ","); got != "1000,200,16044,19" {
+			t.Fatalf("films,actors,rentals,penelope = %s", got)
+		}
+		if recs[1][4] == "0" {
+			t.Fatal("film_list view is empty")
 		}
 	})
 }

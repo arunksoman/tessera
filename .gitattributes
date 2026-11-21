@@ -1,1 +1,5 @@
 *.sh text eol=lf
+# Fixtures are mounted into Linux containers; CRLF would corrupt COPY data.
+test/fixtures/** text eol=lf
+# Third-party Sakila dumps: vendored, too large to diff usefully.
+test/fixtures/sakila/*/*.sql linguist-vendored -diff

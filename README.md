@@ -153,7 +153,7 @@ The databases are also available to `tess` itself, on localhost only. The passwo
 
 | Service | Image | Port | User / password / database |
 |---|---|---|---|
-| `postgres` | `postgres:18-alpine` | 55418 | `tessera` / `tessera_dev` / `tessera_test` |
+| `postgres` | `postgres:18-alpine` | 55418 | `tessera` / `tessera_dev` / `tessera_test` and `sakila` |
 | `mysql` | `mysql:8.4` | 53384 | same |
 | `mariadb` | built from `alpine:3.22` (11.4) | 53114 | same |
 | `postgres-oldest` | `postgres:14-alpine` | 55414 | same |
@@ -162,9 +162,19 @@ The databases are also available to `tess` itself, on localhost only. The passwo
 
 Alpine is used wherever it exists. Oracle publishes no Alpine MySQL image, and Alpine's own `mysql` package is really MariaDB, so real MySQL uses the official image.
 
+Each server holds two databases. `tessera_test` is a tiny fixture that the tests depend on, so leave its rows alone. `sakila` is the [Sakila sample database](https://dev.mysql.com/doc/sakila/en/), a DVD rental store with 1,000 films, 16,044 rentals, views, triggers, and enums, for trying `tess` on something realistic. Its scripts, sources, and licenses are in [test/fixtures/sakila](test/fixtures/sakila).
+
+Init scripts run only when a data directory is empty, so after a fixture changes, recreate the databases:
+
 ```sh
-printf 'tessera_dev\n' | tess profile add local-pg --tile postgres --host 127.0.0.1 --port 55418 \
-  --user tessera --database tessera_test --tls disable --password-stdin
+docker compose down -v && docker compose up -d --wait
+```
+
+```sh
+printf 'tessera_dev\n' | tess profile add sakila-pg --tile postgres --host 127.0.0.1 --port 55418 \
+  --user tessera --database sakila --tls disable --password-stdin
+printf 'tessera_dev\n' | tess profile add sakila-mysql --tile mysql --host 127.0.0.1 --port 53384 \
+  --user tessera --database sakila --tls DISABLED --password-stdin
 ```
 
 ## Release
