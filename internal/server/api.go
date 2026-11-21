@@ -69,6 +69,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/profiles/{name}", s.saveProfile)
 	mux.HandleFunc("DELETE /api/profiles/{name}", s.deleteProfile)
 	mux.HandleFunc("POST /api/conns/{name}/tree", s.tree)
+	mux.HandleFunc("POST /api/conns/{name}/keys", s.keys)
 	mux.HandleFunc("POST /api/conns/{name}/browse", s.browse)
 	mux.HandleFunc("POST /api/conns/{name}/exec", s.exec)
 	mux.HandleFunc("DELETE /api/conns/{name}/tabs/{tab}", s.closeTab)
@@ -483,6 +484,7 @@ type nodeJSON struct {
 	Label       string  `json:"label"`
 	HasChildren bool    `json:"hasChildren"`
 	Browsable   bool    `json:"browsable"`
+	Detail      string  `json:"detail,omitempty"`
 }
 
 func (s *Server) tree(w http.ResponseWriter, r *http.Request) {
@@ -514,7 +516,47 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request) {
 		Next  string     `json:"next"`
 	}{Nodes: make([]nodeJSON, len(nodes)), Next: next}
 	for i, n := range nodes {
-		out.Nodes[i] = nodeJSON{encodeRef(n.Ref), n.Kind, n.Label, n.HasChildren, n.Browsable}
+		out.Nodes[i] = nodeJSON{encodeRef(n.Ref), n.Kind, n.Label, n.HasChildren, n.Browsable, n.Detail}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type foreignKeyJSON struct {
+	Name         string   `json:"name"`
+	Fields       []string `json:"fields"`
+	Target       refJSON  `json:"target"`
+	TargetFields []string `json:"targetFields"`
+}
+
+// keys answers with empty lists when the connection cannot describe keys, since then none
+// are known.
+func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Ref refJSON `json:"ref"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	conn, release, err := s.api.acquire(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	defer release()
+	k, err := conn.Keys(r.Context(), in.Ref.ref())
+	if err != nil && !errors.Is(err, engine.ErrUnsupported) {
+		fail(w, err)
+		return
+	}
+	out := struct {
+		Primary []string         `json:"primary"`
+		Foreign []foreignKeyJSON `json:"foreign"`
+	}{Primary: k.Primary, Foreign: make([]foreignKeyJSON, len(k.Foreign))}
+	if out.Primary == nil {
+		out.Primary = []string{}
+	}
+	for i, fk := range k.Foreign {
+		out.Foreign[i] = foreignKeyJSON{fk.Name, fk.Fields, encodeRef(fk.Target), fk.TargetFields}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

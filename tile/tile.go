@@ -114,6 +114,8 @@ type Node struct {
 	Label       string    `json:"label"`
 	HasChildren bool      `json:"has_children,omitempty"`
 	Browsable   bool      `json:"browsable,omitempty"`
+	// Detail is a short note shown beside the label, such as a parameter's type.
+	Detail string `json:"detail,omitempty"`
 }
 
 // Page requests part of a list. Children are always paginated.
@@ -126,6 +128,28 @@ type ObjectTree interface {
 	// Children returns the next page, and a cursor that is empty on the last page.
 	Children(ctx context.Context, parent ObjectRef, p Page) (nodes []Node, next string, err error)
 	Describe(ctx context.Context, ref ObjectRef) (ObjectDetail, error)
+}
+
+// KeyDescriber is an optional ObjectTree facet for stores whose records have keys and refer to
+// records of other objects, as relational tables do.
+type KeyDescriber interface {
+	DescribeKeys(ctx context.Context, ref ObjectRef) (Keys, error)
+}
+
+// Keys describes an object's primary key and its references to other objects. An object
+// without them, such as a view, has empty Keys.
+type Keys struct {
+	Primary []string     `json:"primary,omitempty"`
+	Foreign []ForeignKey `json:"foreign,omitempty"`
+}
+
+// ForeignKey says that Fields hold the values of TargetFields in one record of Target, in
+// order. Target is a ref as the tree lists it, so a front-end can browse it.
+type ForeignKey struct {
+	Name         string    `json:"name"`
+	Fields       []string  `json:"fields"`
+	Target       ObjectRef `json:"target"`
+	TargetFields []string  `json:"target_fields"`
 }
 
 type ObjectDetail struct {

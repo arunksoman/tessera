@@ -3,6 +3,8 @@ package mysql
 import (
 	"strings"
 	"testing"
+
+	"github.com/arunksoman/tessera/tile"
 )
 
 func TestConfigSafeDefaults(t *testing.T) {
@@ -72,3 +74,5 @@ func TestConfigSocketSkipsTLS(t *testing.T) {
 		t.Fatalf("%+v", cfg)
 	}
 }
+
+var _ tile.KeyDescriber = tree{}

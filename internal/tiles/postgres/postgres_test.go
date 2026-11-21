@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/arunksoman/tessera/tile"
 )
 
 func TestConnStringCannotInjectSettings(t *testing.T) {
@@ -45,3 +47,5 @@ func TestNewProfilesVerifyTLSByDefault(t *testing.T) {
 		t.Fatalf("a verify-full profile must not fall back to plaintext: %+v", cfg.Fallbacks)
 	}
 }
+
+var _ tile.KeyDescriber = tree{}

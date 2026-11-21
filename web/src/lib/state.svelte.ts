@@ -1,9 +1,11 @@
-import { api, randomId, type Profile, type Ref, type Tile } from './api';
+import { api, randomId, type Filter, type Profile, type Ref, type Tile } from './api';
+import { browseTitle } from './keys.ts';
 import { parseRecent, renameRecent, touchRecent, type Recent } from './connections.ts';
 
 export type Tab =
 	| { id: string; kind: 'sql'; profile: string; title: string; sql: string }
-	| { id: string; kind: 'browse'; profile: string; title: string; ref: Ref };
+	// filter is what the tab opened with, such as the key of a referenced row.
+	| { id: string; kind: 'browse'; profile: string; title: string; ref: Ref; filter?: Filter[] };
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -66,15 +68,16 @@ class AppState {
 		this.active = tab.id;
 	}
 
-	openBrowse(profile: string, ref: Ref) {
+	/** Opens a browse tab, or switches to the one already showing ref with the same filter. */
+	openBrowse(profile: string, ref: Ref, filter: Filter[] = []) {
 		this.used(profile);
-		const key = JSON.stringify(ref);
-		const open = this.tabs.find((t) => t.kind === 'browse' && t.profile === profile && JSON.stringify(t.ref) === key);
+		const key = JSON.stringify([ref, filter]);
+		const open = this.tabs.find((t) => t.kind === 'browse' && t.profile === profile && JSON.stringify([t.ref, t.filter ?? []]) === key);
 		if (open) {
 			this.active = open.id;
 			return;
 		}
-		const tab: Tab = { id: randomId(), kind: 'browse', profile, title: ref[ref.length - 1]?.name ?? profile, ref };
+		const tab: Tab = { id: randomId(), kind: 'browse', profile, title: browseTitle(ref, filter) || profile, ref, filter };
 		this.tabs.push(tab);
 		this.active = tab.id;
 	}

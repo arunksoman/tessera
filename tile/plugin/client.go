@@ -112,7 +112,7 @@ func (c *Client) Open(ctx context.Context, cfg tile.ConnConfig, env tile.Env) (t
 		c.dropEnv(envID)
 		return nil, err
 	}
-	rc := &remoteConn{c: c, id: reply.Conn, env: envID, lang: reply.Language, tree: reply.Facets.Tree}
+	rc := &remoteConn{c: c, id: reply.Conn, env: envID, lang: reply.Language, tree: reply.Facets.Tree, keys: reply.Facets.TreeKeys}
 	return wrapConn(rc, reply.Facets), nil
 }
 
@@ -130,6 +130,7 @@ type remoteConn struct {
 	env  uint64
 	lang string
 	tree bool
+	keys bool
 	once sync.Once
 }
 
@@ -179,6 +180,9 @@ func (r *remoteConn) Tree() tile.ObjectTree {
 	if !r.tree {
 		return nil
 	}
+	if r.keys {
+		return keysTree{remoteTree{r}}
+	}
 	return remoteTree{r}
 }
 
@@ -196,6 +200,14 @@ func (t remoteTree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.Obje
 	var d tile.ObjectDetail
 	err := t.r.call(ctx, MTreeDescribe, RefRequest{Conn: t.r.id, Ref: ref}, &d)
 	return d, err
+}
+
+type keysTree struct{ remoteTree }
+
+func (t keysTree) DescribeKeys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	var k tile.Keys
+	err := t.r.call(ctx, MTreeKeys, RefRequest{Conn: t.r.id, Ref: ref}, &k)
+	return k, err
 }
 
 // remoteLang fails safe: the safety gate relies on it, so when the plugin cannot answer, a

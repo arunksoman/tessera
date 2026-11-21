@@ -119,6 +119,15 @@ func (c *Conn) Layout(ctx context.Context, ref tile.ObjectRef) (tile.Layout, err
 	return b.Layout(ctx, ref)
 }
 
+// Keys describes an object's primary and foreign keys.
+func (c *Conn) Keys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	kd, ok := c.conn.Tree().(tile.KeyDescriber)
+	if !ok {
+		return tile.Keys{}, ErrUnsupported
+	}
+	return kd.DescribeKeys(ctx, ref)
+}
+
 // Browse streams one page on a read-only session. It is engine-generated reading, so it
 // skips the gate and history.
 func (c *Conn) Browse(ctx context.Context, ref tile.ObjectRef, l tile.Layout, q tile.BrowseQuery, sink func(tile.Frame) error) error {

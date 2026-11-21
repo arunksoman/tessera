@@ -25,6 +25,7 @@ const (
 	MConnSession     = "conn.session"
 	MTreeChildren    = "tree.children"
 	MTreeDescribe    = "tree.describe"
+	MTreeKeys        = "tree.keys"
 	MLangSplit       = "lang.split"
 	MLangClassify    = "lang.classify"
 	MLangRedact      = "lang.redact"
@@ -46,6 +47,7 @@ const (
 type Facets struct {
 	ConfigWarner bool `json:"config_warner,omitempty"`
 	Tree         bool `json:"tree,omitempty"`
+	TreeKeys     bool `json:"tree_keys,omitempty"`
 	Browser      bool `json:"browser,omitempty"`
 	Editor       bool `json:"editor,omitempty"`
 	Explainer    bool `json:"explainer,omitempty"`

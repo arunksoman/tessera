@@ -21,6 +21,7 @@ type fakeTile struct {
 	cancelled bool
 	closed    int
 	execCtx   context.Context
+	tree      tile.ObjectTree // nil means the connection has no tree
 }
 
 func (f *fakeTile) Manifest() tile.Manifest {
@@ -67,7 +68,7 @@ func (c *fakeConn) Close() error {
 func (c *fakeConn) Session(context.Context, tile.SessionOptions) (tile.Session, error) {
 	return &fakeSession{c: c}, nil
 }
-func (c *fakeConn) Tree() tile.ObjectTree   { return nil }
+func (c *fakeConn) Tree() tile.ObjectTree   { return c.t.tree }
 func (c *fakeConn) Language() tile.Language { return fakeLang{} }
 func (c *fakeConn) Layout(context.Context, tile.ObjectRef) (tile.Layout, error) {
 	return tile.Layout{Fields: []tile.Field{{Name: "n", Kind: tile.KindInt}}, Key: []string{"n"}}, nil
@@ -403,5 +404,55 @@ func TestDeadlineSurvivesTheBoundary(t *testing.T) {
 	defer cancel()
 	if _, err := st.Next(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+}
+
+type fakeTree struct{}
+
+func (fakeTree) Children(context.Context, tile.ObjectRef, tile.Page) ([]tile.Node, string, error) {
+	return []tile.Node{{Ref: tile.ObjectRef{}.Child("fn", "f(int)"), Kind: "fn", Label: "f", Detail: "int"}}, "", nil
+}
+func (fakeTree) Describe(context.Context, tile.ObjectRef) (tile.ObjectDetail, error) {
+	return tile.ObjectDetail{}, nil
+}
+
+type fakeKeysTree struct{ fakeTree }
+
+func (fakeKeysTree) DescribeKeys(_ context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	if len(ref.Path) != 1 {
+		return tile.Keys{}, errors.New("no such object")
+	}
+	return tile.Keys{Primary: []string{"id"}, Foreign: []tile.ForeignKey{{Name: "fk", Fields: []string{"owner"},
+		Target: tile.ObjectRef{}.Child("table", "users"), TargetFields: []string{"id"}}}}, nil
+}
+
+func TestTreeFacetsAcrossProcessBoundary(t *testing.T) {
+	c, _ := pair(t, &fakeTile{tree: fakeTree{}})
+	tree := open(t, c).Tree()
+	if tree == nil {
+		t.Fatal("tree lost")
+	}
+	if _, ok := tree.(tile.KeyDescriber); ok {
+		t.Fatal("tree claims a key facet the plugin lacks")
+	}
+	nodes, _, err := tree.Children(context.Background(), tile.ObjectRef{}, tile.Page{Limit: 10})
+	if err != nil || len(nodes) != 1 || nodes[0].Detail != "int" {
+		t.Fatalf("children = %+v, %v", nodes, err)
+	}
+
+	c, _ = pair(t, &fakeTile{tree: fakeKeysTree{}})
+	kd, ok := open(t, c).Tree().(tile.KeyDescriber)
+	if !ok {
+		t.Fatal("key facet lost")
+	}
+	k, err := kd.DescribeKeys(context.Background(), tile.ObjectRef{}.Child("table", "docs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(k.Primary) != 1 || len(k.Foreign) != 1 || k.Foreign[0].Target.Path[0].Name != "users" || k.Foreign[0].TargetFields[0] != "id" {
+		t.Fatalf("keys = %+v", k)
+	}
+	if _, err := kd.DescribeKeys(context.Background(), tile.ObjectRef{}); err == nil {
+		t.Fatal("plugin error lost")
 	}
 }

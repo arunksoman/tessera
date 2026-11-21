@@ -2,6 +2,8 @@
 	import { api, type Ref, type TreeNode } from '#lib/api.ts';
 	import { app } from '#lib/state.svelte.ts';
 	import type { IconName } from '#lib/icons/index.ts';
+	import { copyText, type MenuAt, type MenuItem } from '#lib/menu.ts';
+	import ContextMenu from './ContextMenu.svelte';
 	import Icon from './Icon.svelte';
 	import Self from './TreeLevel.svelte';
 
@@ -13,6 +15,7 @@
 	let loading = $state(false);
 	let error = $state('');
 	let open = $state<Record<string, boolean>>({});
+	let menuAt = $state<MenuAt | null>(null);
 
 	async function load(cursor = '') {
 		loading = true;
@@ -34,11 +37,47 @@
 	});
 
 	const key = (n: TreeNode) => JSON.stringify(n.ref);
-	const icon: Record<string, IconName> = { database: 'database', schema: 'schema', table: 'table', view: 'view', 'materialized view': 'matview' };
+	const icon: Record<string, IconName> = {
+		database: 'database',
+		schema: 'schema',
+		table: 'table',
+		view: 'view',
+		'materialized view': 'matview',
+		function: 'fn',
+		procedure: 'fn',
+		aggregate: 'fn'
+	};
+	// Leaves such as parameters show no bullet: their detail says what they are.
+	const plain = new Set(['parameter', 'return']);
 
 	function activate(n: TreeNode) {
 		if (n.browsable) app.openBrowse(profile, n.ref);
 		else if (n.hasChildren) open[key(n)] = !open[key(n)];
+	}
+
+	function items(n: TreeNode): MenuItem[] {
+		const out: MenuItem[] = [];
+		if (n.browsable) out.push({ label: 'Open data', icon: 'table', action: () => app.openBrowse(profile, n.ref) });
+		if (n.hasChildren) out.push({ label: open[key(n)] ? 'Collapse' : 'Expand', action: () => (open[key(n)] = !open[key(n)]) });
+		out.push('separator', { label: 'Copy name', icon: 'copy', action: () => copyText(n.label) });
+		// A routine's ref names its signature, which tells overloads apart.
+		const refName = n.ref[n.ref.length - 1]?.name ?? '';
+		if (refName !== n.label) out.push({ label: 'Copy signature', action: () => copyText(refName) });
+		if (n.detail) out.push({ label: 'Copy type', action: () => copyText(n.detail ?? '') });
+		out.push('separator', { label: 'Refresh', action: () => app.refreshTree(profile) });
+		return out;
+	}
+
+	function contextMenu(e: MouseEvent, n: TreeNode) {
+		e.preventDefault();
+		menuAt = { x: e.clientX, y: e.clientY, items: items(n) };
+	}
+
+	function menuKey(e: KeyboardEvent, n: TreeNode) {
+		if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+		e.preventDefault();
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		menuAt = { x: r.left + 16, y: r.bottom, items: items(n) };
 	}
 </script>
 
@@ -53,9 +92,18 @@
 				{:else}
 					<span class="twisty"></span>
 				{/if}
-				<button class="label" title="{n.kind}: {n.label}" onclick={() => activate(n)}>
-					<span class="icon" aria-hidden="true">{#if icon[n.kind]}<Icon name={icon[n.kind]} size={14} />{:else}•{/if}</span>
+				<button
+					class="label"
+					title="{n.kind}: {n.ref[n.ref.length - 1]?.name ?? n.label}{n.detail ? ` ${n.detail}` : ''}"
+					onclick={() => activate(n)}
+					oncontextmenu={(e) => contextMenu(e, n)}
+					onkeydown={(e) => menuKey(e, n)}
+				>
+					<span class="icon" class:fn={icon[n.kind] === 'fn'} aria-hidden="true"
+						>{#if icon[n.kind]}<Icon name={icon[n.kind]} size={14} />{:else if !plain.has(n.kind)}•{/if}</span
+					>
 					<span class="text">{n.label}</span>
+					{#if n.detail}<span class="detail">{n.detail}</span>{/if}
 				</button>
 			</div>
 			{#if open[key(n)]}<Self {profile} parent={n.ref} depth={depth + 1} />{/if}
@@ -68,6 +116,10 @@
 		<li style:--depth={depth}><button class="more" onclick={() => load(next)}>Load more…</button></li>
 	{/if}
 </ul>
+
+{#if menuAt}
+	<ContextMenu x={menuAt.x} y={menuAt.y} items={menuAt.items} label="Object actions" onclose={() => (menuAt = null)} />
+{/if}
 
 <style>
 	ul {
@@ -117,10 +169,25 @@
 		color: var(--muted);
 		width: 14px;
 	}
+	.icon.fn {
+		color: var(--porphyry);
+	}
 	.text {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.detail {
+		margin-left: auto;
+		padding-left: 8px;
+		flex: 0 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--muted);
+		font-family: var(--font-mono);
+		font-size: 11px;
 	}
 	.note,
 	.more {

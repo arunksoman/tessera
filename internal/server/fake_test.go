@@ -137,6 +137,9 @@ func (fakeTree) Children(_ context.Context, parent tile.ObjectRef, p tile.Page) 
 	if len(parent.Path) == 0 {
 		return []tile.Node{{Ref: parent.Child("schema", "app"), Kind: "schema", Label: "app", HasChildren: true}}, "", nil
 	}
+	if len(parent.Path) == 2 {
+		return []tile.Node{{Ref: parent.Child("parameter", "n"), Kind: "parameter", Label: "n", Detail: "int"}}, "", nil
+	}
 	if p.Cursor == "" {
 		return []tile.Node{{Ref: parent.Child("table", "items"), Kind: "table", Label: "items", Browsable: true}}, "page2", nil
 	}
@@ -145,6 +148,15 @@ func (fakeTree) Children(_ context.Context, parent tile.ObjectRef, p tile.Page) 
 
 func (fakeTree) Describe(context.Context, tile.ObjectRef) (tile.ObjectDetail, error) {
 	return tile.ObjectDetail{}, nil
+}
+
+// DescribeKeys gives items a primary key and a foreign key from name to report.label.
+func (fakeTree) DescribeKeys(_ context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	if len(ref.Path) != 2 || ref.Path[1].Name != "items" {
+		return tile.Keys{}, nil
+	}
+	return tile.Keys{Primary: []string{"id"}, Foreign: []tile.ForeignKey{{Name: "items_name_fk", Fields: []string{"name"},
+		Target: tile.ObjectRef{}.Child("schema", "app").Child("view", "report"), TargetFields: []string{"label"}}}}, nil
 }
 
 type fakeSession struct{ db *fakeDB }
