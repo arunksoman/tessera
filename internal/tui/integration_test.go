@@ -209,7 +209,8 @@ func openItems(a *app, schema string) {
 
 func TestTreeShowsTheTable(t *testing.T) {
 	each(t, func(t *testing.T, a *app, _, _ string, _ func(string) error) {
-		a.keys("alt+1", "enter")
+		// MySQL lists every schema the user can see, and sakila sorts before tessera_test.
+		a.keys("alt+1", "end", "enter")
 		a.see("tui_items")
 		a.keys("r")
 		a.see("tui_items") // refreshing keeps the schema open
