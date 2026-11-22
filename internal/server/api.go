@@ -75,6 +75,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/conns/{name}/tabs/{tab}", s.closeTab)
 	mux.HandleFunc("POST /api/conns/{name}/plan", s.plan)
 	mux.HandleFunc("POST /api/conns/{name}/apply", s.apply)
+	mux.HandleFunc("POST /api/conns/{name}/structure", s.structure)
+	mux.HandleFunc("POST /api/conns/{name}/structure/plan", s.planStructure)
+	mux.HandleFunc("POST /api/conns/{name}/script", s.createScript)
+	mux.HandleFunc("GET /api/conns/{name}/export", s.export)
+	mux.HandleFunc("POST /api/conns/{name}/import", s.importRecords)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "", "no such API")
 	})
@@ -911,24 +916,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest{err})
 		return
 	}
-	id := randomString()
-	s.api.mu.Lock()
-	s.api.plans[id] = &pendingPlan{session: sessionOf(r), profile: r.PathValue("name"), p: p, created: time.Now()}
-	s.api.mu.Unlock()
-
-	type stepJSON struct {
-		Preview    string `json:"preview"`
-		ExpectRows int64  `json:"expectRows"`
-	}
-	out := struct {
-		ID     string     `json:"id"`
-		Steps  []stepJSON `json:"steps"`
-		Atomic bool       `json:"atomic"`
-	}{ID: id, Atomic: p.Plan.Atomicity == tile.AtomicAll}
-	for _, st := range p.Plan.Steps {
-		out.Steps = append(out.Steps, stepJSON{st.Preview, st.ExpectRows})
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, s.api.keepPlan(r, conn, p))
 }
 
 func (s *Server) apply(w http.ResponseWriter, r *http.Request) {

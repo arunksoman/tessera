@@ -198,3 +198,54 @@ func TestRowCopiesSoRawCanBeReused(t *testing.T) {
 		t.Fatalf("buffered row aliased driver memory: %q", b.String())
 	}
 }
+
+func TestJSONL(t *testing.T) {
+	var b strings.Builder
+	write(t, NewJSONL(&b), fields, cells("9007199254740993", "1.50", ptr("a\nb"), "t"), cells("2", "0", nil, "f"))
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("%q", b.String())
+	}
+	if lines[0] != `{"id":9007199254740993,"total":1.50,"name":"a\nb","ok":true}` || lines[1] != `{"id":2,"total":0,"name":null,"ok":false}` {
+		t.Fatalf("%q", lines)
+	}
+	b.Reset()
+	write(t, NewJSONL(&b), fields)
+	if b.String() != "" {
+		t.Fatalf("empty result: %q", b.String())
+	}
+}
+
+func TestSQL(t *testing.T) {
+	var calls [][]string
+	script := func(names []string, rows [][]tile.Value) (string, error) {
+		var vals []string
+		for _, r := range rows {
+			vals = append(vals, string(r[0].Raw))
+		}
+		calls = append(calls, names)
+		return "INSERT " + strings.Join(vals, ",") + ";\n", nil
+	}
+	var b strings.Builder
+	w := NewSQL(&b, script, 2)
+	if err := w.Begin(fields); err != nil {
+		t.Fatal(err)
+	}
+	// The writer keeps rows past the Row call, so it must copy them.
+	buf := []byte("1")
+	for _, id := range []string{"1", "2", "3"} {
+		copy(buf, id)
+		if err := w.Row([]tile.Value{{Kind: tile.KindInt, Raw: buf}, {}, {}, {}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.End(); err != nil {
+		t.Fatal(err)
+	}
+	if b.String() != "INSERT 1,2;\nINSERT 3;\n" {
+		t.Fatalf("%q", b.String())
+	}
+	if len(calls) != 2 || strings.Join(calls[0], ",") != "id,total,name,ok" {
+		t.Fatalf("%q", calls)
+	}
+}

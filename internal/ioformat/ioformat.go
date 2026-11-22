@@ -302,3 +302,104 @@ func CellText(v tile.Value) string { return cellText(v) }
 
 // Display makes database or server text safe to show in a terminal.
 func Display(s string) string { return display(s) }
+
+// JSON Lines
+
+type jsonlWriter struct {
+	j jsonWriter
+}
+
+// NewJSONL writes one JSON object per line, so a reader can stream it record by record.
+func NewJSONL(w io.Writer) Writer { return &jsonlWriter{j: jsonWriter{w: w}} }
+
+func (l *jsonlWriter) Begin(fields []tile.Field) error {
+	l.j.names = make([][]byte, len(fields))
+	for i, f := range fields {
+		n, err := json.Marshal(f.Name)
+		if err != nil {
+			return err
+		}
+		l.j.names[i] = n
+	}
+	return nil
+}
+
+func (l *jsonlWriter) Row(cells []tile.Value) error {
+	b := &l.j.buf
+	b.Reset()
+	b.WriteByte('{')
+	for i, v := range cells {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.Write(l.j.names[i])
+		b.WriteByte(':')
+		b.Write(jsonValue(v))
+	}
+	b.WriteString("}\n")
+	_, err := l.j.w.Write(b.Bytes())
+	return err
+}
+
+func (l *jsonlWriter) End() error { return nil }
+
+// SQL
+
+// Script renders rows as statements that add them, such as tile.Loader.InsertScript.
+type Script func(fields []string, rows [][]tile.Value) (string, error)
+
+type sqlWriter struct {
+	w      io.Writer
+	script Script
+	batch  int
+	names  []string
+	rows   [][]tile.Value
+	arena  []byte
+}
+
+// NewSQL writes statements from script, batch rows at a time.
+func NewSQL(w io.Writer, script Script, batch int) Writer {
+	return &sqlWriter{w: w, script: script, batch: max(1, batch)}
+}
+
+func (s *sqlWriter) Begin(fields []tile.Field) error {
+	s.names = make([]string, len(fields))
+	for i, f := range fields {
+		s.names[i] = f.Name
+	}
+	return nil
+}
+
+// Row copies the values, since they are kept past this call until the batch is full.
+func (s *sqlWriter) Row(cells []tile.Value) error {
+	row := make([]tile.Value, len(cells))
+	for i, v := range cells {
+		from := len(s.arena)
+		s.arena = append(s.arena, v.Raw...)
+		row[i] = tile.Value{Kind: v.Kind, Raw: s.arena[from:len(s.arena):len(s.arena)]}
+		if v.Raw == nil {
+			row[i].Raw = nil
+		}
+	}
+	s.rows = append(s.rows, row)
+	if len(s.rows) >= s.batch {
+		return s.flush()
+	}
+	return nil
+}
+
+func (s *sqlWriter) flush() error {
+	if len(s.rows) == 0 {
+		return nil
+	}
+	text, err := s.script(s.names, s.rows)
+	if err != nil {
+		return err
+	}
+	// Rows already rendered no longer need their bytes, so the arena can be reused.
+	s.rows, s.arena = s.rows[:0], nil
+	_, err = io.WriteString(s.w, text)
+	return err
+}
+
+func (s *sqlWriter) End() error { return s.flush() }

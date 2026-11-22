@@ -110,6 +110,17 @@ func harnessFor(tl tile.Tile, port string) tiletest.Harness {
 		RunningSQL: func(marker string) string {
 			return fmt.Sprintf(`SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE INFO LIKE '%s%%' AND ID <> CONNECTION_ID()`, marker)
 		},
+		Design: &tiletest.Design{
+			IntType:       "int",
+			TriggerAction: "SET NEW.name = UPPER(NEW.name)",
+			Create: func(t *testing.T, s tile.Session) {
+				drop := func() { exec(t, s, "DROP TABLE IF EXISTS tt_design, tt_design_renamed, tt_design_ref") }
+				drop()
+				exec(t, s, "CREATE TABLE tt_design_ref (id int PRIMARY KEY)")
+				exec(t, s, "CREATE TABLE tt_design (id int PRIMARY KEY, name varchar(50))")
+				t.Cleanup(drop)
+			},
+		},
 		CreateRoutine: func(t *testing.T, s tile.Session) {
 			exec(t, s, `DROP FUNCTION IF EXISTS tt_add`)
 			exec(t, s, `CREATE FUNCTION tt_add(a INT, b INT) RETURNS INT DETERMINISTIC RETURN a + b`)

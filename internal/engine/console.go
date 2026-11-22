@@ -249,13 +249,16 @@ func (c *Conn) Apply(ctx context.Context, p *Pending, opt RunOptions) error {
 	for i, st := range p.Plan.Steps {
 		start := time.Now()
 		rows, affected, err := execute(ctx, sess, st.Request, func(int, tile.Frame) error { return nil }, 0)
-		if err == nil && affected != st.ExpectRows {
+		if err == nil && st.ExpectRows >= 0 && affected != st.ExpectRows {
 			err = fmt.Errorf("%w: change %d matched %d rows, want %d, so the record changed since it was read; nothing was applied",
 				ErrConflict, i+1, affected, st.ExpectRows)
 		}
 		// Plan text has placeholders, so no bound value reaches history or audit.
 		if recErr := c.record(lang.Redact(st.Request.Text), classes[i], start, rows, affected, err); recErr != nil && err == nil {
 			err = fmt.Errorf("recording statement: %w", recErr)
+		}
+		if classes[i].Schema && c.meta != nil {
+			c.meta.Invalidate()
 		}
 		if err != nil {
 			return rollback(err)

@@ -137,6 +137,7 @@ func (s *server) handle(ctx context.Context, method string, raw json.RawMessage)
 	case MOpen:
 		return s.open(ctx, raw)
 	case MConnSession, MConnCaps, MConnPing, MConnClose, MTreeChildren, MTreeDescribe, MTreeKeys,
+		MTreeStructure, MTreePlanStructure, MTreeCreateScript, MLoaderInsertPlan, MLoaderInsertScript,
 		MLangSplit, MLangClassify, MLangRedact, MBrowseLayout, MBrowseRequest, MEditorPlan, MExplainRequest:
 		return s.handleConn(ctx, method, raw)
 	case MSessionExecute:
@@ -233,9 +234,12 @@ func (s *server) open(ctx context.Context, raw json.RawMessage) (any, error) {
 	_, browser := c.(tile.Browser)
 	_, editor := c.(tile.Editor)
 	_, explainer := c.(tile.Explainer)
+	_, loader := c.(tile.Loader)
 	tree := c.Tree()
 	_, keys := tree.(tile.KeyDescriber)
-	reply := OpenReply{Conn: s.add(sv), Facets: Facets{Tree: tree != nil, TreeKeys: keys, Browser: browser, Editor: editor, Explainer: explainer}}
+	_, design := tree.(tile.Designer)
+	reply := OpenReply{Conn: s.add(sv), Facets: Facets{Tree: tree != nil, TreeKeys: keys, TreeDesign: design,
+		Browser: browser, Editor: editor, Explainer: explainer, Loader: loader}}
 	if sv.lang != nil {
 		reply.Language = sv.lang.ID()
 	}
@@ -326,6 +330,42 @@ func (s *server) handleConn(ctx context.Context, method string, raw json.RawMess
 			return nil, errors.New("connection cannot describe keys")
 		}
 		return kd.DescribeKeys(ctx, req.Ref)
+	case MTreeStructure, MTreeCreateScript:
+		req, err := decode[RefRequest](raw)
+		if err != nil {
+			return nil, err
+		}
+		d, ok := c.Tree().(tile.Designer)
+		if !ok {
+			return nil, errors.New("connection cannot describe structure")
+		}
+		if method == MTreeStructure {
+			return d.DescribeStructure(ctx, req.Ref)
+		}
+		return d.CreateScript(ctx, req.Ref)
+	case MTreePlanStructure:
+		req, err := decode[StructurePlanRequest](raw)
+		if err != nil {
+			return nil, err
+		}
+		d, ok := c.Tree().(tile.Designer)
+		if !ok {
+			return nil, errors.New("connection cannot change structure")
+		}
+		return d.PlanStructure(req.Ref, req.Changes)
+	case MLoaderInsertPlan, MLoaderInsertScript:
+		req, err := decode[InsertRequest](raw)
+		if err != nil {
+			return nil, err
+		}
+		l, ok := c.(tile.Loader)
+		if !ok {
+			return nil, errors.New("connection cannot load records")
+		}
+		if method == MLoaderInsertPlan {
+			return l.InsertPlan(req.Ref, req.Fields, req.Rows)
+		}
+		return l.InsertScript(req.Ref, req.Fields, req.Rows)
 	case MLangSplit, MLangClassify, MLangRedact:
 		req, err := decode[TextRequest](raw)
 		if err != nil {

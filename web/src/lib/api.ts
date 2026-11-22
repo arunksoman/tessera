@@ -70,7 +70,67 @@ export type ExecEvent =
 	| { t: 'end'; inTx?: boolean; ddl?: boolean };
 
 export type Change = { key: Cell[]; old: Record<string, Cell>; set: Record<string, Cell> };
-export type Plan = { id: string; steps: { preview: string; expectRows: number }[]; atomic: boolean };
+/** risk and reason are the safety gate's view of a step: none, write, or destructive. */
+export type PlanStep = { preview: string; expectRows: number; risk: string; reason?: string };
+export type Plan = { id: string; steps: PlanStep[]; atomic: boolean };
+
+// Structure of a table or view. Type, default, and trigger texts are in the database's own SQL.
+export type FieldDef = {
+	name: string;
+	type: string;
+	nullable: boolean;
+	default: string;
+	comment: string;
+	primary: boolean;
+	collation: string;
+	extra: string;
+};
+export type IndexDef = {
+	name: string;
+	fields: string[];
+	unique: boolean;
+	primary: boolean;
+	constraint: boolean;
+	method: string;
+	definition: string;
+};
+export type RelationDef = {
+	name: string;
+	fields: string[];
+	target: Ref;
+	targetFields: string[];
+	onUpdate: string;
+	onDelete: string;
+};
+export type TriggerDef = {
+	name: string;
+	timing: string;
+	events: string[];
+	forEach: string;
+	condition: string;
+	action: string;
+	definition: string;
+};
+export type Structure = {
+	fields: FieldDef[];
+	indexes: IndexDef[];
+	relations: RelationDef[];
+	triggers: TriggerDef[];
+	/** The ON UPDATE and ON DELETE actions the server accepts. */
+	actions: string[];
+};
+export type StructureChange = {
+	op: string;
+	name?: string;
+	field?: FieldDef;
+	from?: FieldDef;
+	index?: IndexDef;
+	relation?: RelationDef;
+	trigger?: TriggerDef;
+};
+export type ExportFormat = 'csv' | 'json' | 'jsonl' | 'sql';
+export type ImportFormat = 'csv' | 'json' | 'jsonl';
+const importTypes: Record<ImportFormat, string> = { csv: 'text/csv', json: 'application/json', jsonl: 'application/x-ndjson' };
 
 export class ApiError extends Error {
 	constructor(
@@ -129,6 +189,36 @@ export const api = {
 	plan: (profile: string, ref: Ref, changes: Change[]) => call<Plan>('POST', `${conn(profile)}/plan`, { ref, changes }),
 	apply: (profile: string, id: string, confirm: boolean) =>
 		call<void>('POST', `${conn(profile)}/apply`, { id, confirm }),
+	structure: (profile: string, ref: Ref) => call<Structure>('POST', `${conn(profile)}/structure`, { ref }),
+	planStructure: (profile: string, ref: Ref, changes: StructureChange[]) =>
+		call<Plan>('POST', `${conn(profile)}/structure/plan`, { ref, changes }),
+	createScript: (profile: string, ref: Ref) => call<{ script: string }>('POST', `${conn(profile)}/script`, { ref }),
+	/** A download link: the browser saves the file in the background, streaming from the server. */
+	exportURL(profile: string, ref: Ref, format: ExportFormat, neutralize = true): string {
+		const q = new URLSearchParams({ ref: JSON.stringify(ref), format });
+		if (!neutralize) q.set('neutralize', '0');
+		return `${conn(profile)}/export?${q}`;
+	},
+	/** Uploads a file as it is; the server streams it into the table in one transaction where it can. */
+	importFile(
+		profile: string,
+		ref: Ref,
+		file: Blob,
+		format: ImportFormat,
+		opts: { emptyNull: boolean; confirm: boolean },
+		signal?: AbortSignal
+	): Promise<{ rows: number }> {
+		const q = new URLSearchParams({ ref: JSON.stringify(ref) });
+		if (!opts.emptyNull) q.set('emptyNull', '0');
+		if (opts.confirm) q.set('confirm', '1');
+		return fetch(`${conn(profile)}/import?${q}`, {
+			method: 'POST',
+			headers: { 'Content-Type': importTypes[format] },
+			body: file,
+			signal,
+			credentials: 'same-origin'
+		}).then((res) => (res.ok ? res.json() : fail(res)));
+	},
 	closeTab: (profile: string, tab: string) =>
 		call<void>('DELETE', `${conn(profile)}/tabs/${encodeURIComponent(tab)}`).catch(() => {}),
 

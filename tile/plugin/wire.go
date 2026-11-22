@@ -16,30 +16,36 @@ import "github.com/arunksoman/tessera/tile"
 
 // Methods the host calls on a plugin.
 const (
-	MHandshake       = "handshake"
-	MConfigWarnings  = "tile.config_warnings"
-	MOpen            = "tile.open"
-	MConnCaps        = "conn.capabilities"
-	MConnPing        = "conn.ping"
-	MConnClose       = "conn.close"
-	MConnSession     = "conn.session"
-	MTreeChildren    = "tree.children"
-	MTreeDescribe    = "tree.describe"
-	MTreeKeys        = "tree.keys"
-	MLangSplit       = "lang.split"
-	MLangClassify    = "lang.classify"
-	MLangRedact      = "lang.redact"
-	MBrowseLayout    = "browser.layout"
-	MBrowseRequest   = "browser.request"
-	MEditorPlan      = "editor.plan"
-	MExplainRequest  = "explainer.request"
-	MSessionExecute  = "session.execute"
-	MSessionPing     = "session.ping"
-	MSessionClose    = "session.close"
-	MStreamNext      = "stream.next"
-	MStreamClose     = "stream.close"
-	MHostSecret      = "host.secret" // the one method a plugin calls on the host
-	protocolRevision = 1
+	MHandshake      = "handshake"
+	MConfigWarnings = "tile.config_warnings"
+	MOpen           = "tile.open"
+	MConnCaps       = "conn.capabilities"
+	MConnPing       = "conn.ping"
+	MConnClose      = "conn.close"
+	MConnSession    = "conn.session"
+	MTreeChildren   = "tree.children"
+	MTreeDescribe   = "tree.describe"
+	MTreeKeys       = "tree.keys"
+	MTreeStructure  = "tree.structure"
+	// MTreePlanStructure and MTreeCreateScript belong to the tree_design facet.
+	MTreePlanStructure  = "tree.plan_structure"
+	MTreeCreateScript   = "tree.create_script"
+	MLoaderInsertPlan   = "loader.insert_plan"
+	MLoaderInsertScript = "loader.insert_script"
+	MLangSplit          = "lang.split"
+	MLangClassify       = "lang.classify"
+	MLangRedact         = "lang.redact"
+	MBrowseLayout       = "browser.layout"
+	MBrowseRequest      = "browser.request"
+	MEditorPlan         = "editor.plan"
+	MExplainRequest     = "explainer.request"
+	MSessionExecute     = "session.execute"
+	MSessionPing        = "session.ping"
+	MSessionClose       = "session.close"
+	MStreamNext         = "stream.next"
+	MStreamClose        = "stream.close"
+	MHostSecret         = "host.secret" // the one method a plugin calls on the host
+	protocolRevision    = 1
 )
 
 // Facets lists the optional interfaces a tile, connection, or session implements, because a
@@ -48,9 +54,11 @@ type Facets struct {
 	ConfigWarner bool `json:"config_warner,omitempty"`
 	Tree         bool `json:"tree,omitempty"`
 	TreeKeys     bool `json:"tree_keys,omitempty"`
+	TreeDesign   bool `json:"tree_design,omitempty"`
 	Browser      bool `json:"browser,omitempty"`
 	Editor       bool `json:"editor,omitempty"`
 	Explainer    bool `json:"explainer,omitempty"`
+	Loader       bool `json:"loader,omitempty"`
 	Pinger       bool `json:"pinger,omitempty"`
 }
 
@@ -137,6 +145,19 @@ type PlanRequest struct {
 	Ref     tile.ObjectRef `json:"ref"`
 	Layout  tile.Layout    `json:"layout"`
 	Changes tile.ChangeSet `json:"changes"`
+}
+
+type StructurePlanRequest struct {
+	Conn    uint64                 `json:"conn"`
+	Ref     tile.ObjectRef         `json:"ref"`
+	Changes []tile.StructureChange `json:"changes"`
+}
+
+type InsertRequest struct {
+	Conn   uint64         `json:"conn"`
+	Ref    tile.ObjectRef `json:"ref"`
+	Fields []string       `json:"fields"`
+	Rows   [][]tile.Value `json:"rows"`
 }
 
 type ExplainRequest struct {

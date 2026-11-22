@@ -509,11 +509,12 @@ func (s *session) Ping(ctx context.Context) error {
 }
 
 var dialect = sqlgen.Dialect{
-	Quote: func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` },
-	Mark:  func(i int) string { return "$" + strconv.Itoa(i) },
-	Text:  func(c string) string { return c + "::text" },
-	Like:  "ILIKE",
-	Begin: "BEGIN",
+	Quote:  func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` },
+	Mark:   func(i int) string { return "$" + strconv.Itoa(i) },
+	Text:   func(c string) string { return c + "::text" },
+	Like:   "ILIKE",
+	Begin:  "BEGIN",
+	Family: sqlgen.FamilyPostgres,
 }
 
 const (

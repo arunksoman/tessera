@@ -169,6 +169,8 @@ type Value struct {
 
 Optional features are separate facets (`Browser`, `Editor`, `Actions`, `Explainer`, `Insight`, `BulkIO`), discovered by type assertion and advertised in `Capabilities`. New features become new facets, so existing plugins keep working. `KeyDescriber` is a facet of the `ObjectTree` rather than the `Conn`: it reports an object's primary key and its foreign keys, each naming its target as a tree ref, so a front-end can mark key columns and jump to a referenced record without knowing SQL. Document and key-value tiles leave it out.
 
+Two more facets cover table administration ahead of the general `Actions` mechanism. `Designer`, on the `ObjectTree`, describes an object's structure (fields with type, nullability, default, and comment; indexes; relations with their `ON UPDATE` and `ON DELETE` actions; triggers), plans typed `StructureChange` values (rename, truncate, drop, and adding, changing, or dropping a field, index, relation, or trigger) into a `Plan` without side effects, and returns a script that recreates the object. `Loader`, on the `Conn`, plans bulk inserts with bound values and renders records as a script for export. Both cross the plugin protocol behind the `tree_design` and `loader` facet flags. Structure steps set `ExpectRows` to -1, since some stores report rows copied by an `ALTER` and others report none.
+
 Transactions and schema changes are reported by each tile's `Language` through `Classification.Tx` and `Classification.Schema`. The engine never matches verbs, so the same console tracks SQL `BEGIN`/`COMMIT` and Redis `MULTI`/`EXEC`. An analytical database leaves out the `tx.*` capabilities, and front-ends then show no transaction state.
 
 Browsing pages by key (`After`), by count (`Offset`), or by a server cursor (`Layout.Paging = PagingCursor`, as `SCAN` does). Documents arrive as `ShapeDocument` with each document as one `KindJSON` value, and key-value records as `ShapeKeyValue`, so every front-end can still show them as a table.
@@ -322,6 +324,8 @@ DDL, users, grants, TTL, index creation, and similar operations are all `ActionS
 - Web, desktop, and TUI render every admin operation from one form schema.
 - Preview, confirmation, and audit come free.
 - A new tile gets admin UI without front-end code.
+
+Until `ActionSpec` exists, the `Designer` facet (section 2) serves the relational table designer: the web app edits columns, indexes, relations, and triggers in place, the tile plans the DDL, the preview lists each statement with the gate's risk and says whether the plan is atomic (one PostgreSQL transaction) or per statement (MySQL commits DDL implicitly), and `/apply` runs it through the gate and audit like an edit. Truncate and drop ask the user to type the object's name. Imports go through `Conn.Load`, which gates every batch and runs all batches in one transaction where the tile's plan is atomic. Exports stream from a read-only session straight into a browser download.
 
 The `Designer` hint selects a richer view where a form is not enough: `relational-table` (column list, indexes, constraints), `json-doc`, `redis-hash`. A designer still produces `Action` input and goes through the same pipeline. Unknown hints fall back to the form.
 

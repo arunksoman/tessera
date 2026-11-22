@@ -199,6 +199,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Build connection settings field by field, with no raw connection strings
 - [x] API: connections, tree, exec, pages, cancel, plan, apply
 - [x] API: keys
+- [x] API: structure, structure plan, create script, streaming export download, and streaming import
 - [ ] API: describe and complete
 - [ ] One SSE event stream per browser tab, handling the HTTP/1.1 connection limit (exec streams NDJSON per request for now)
 - [x] Embed the frontend with `go:embed`, with a committed placeholder so builds work
@@ -227,6 +228,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Inline edit with pending state, preview, apply, and rollback
 - [x] Column types and primary and foreign key marks in grid headers
 - [x] Context menus on grid cells, column headers, and tree nodes, also from the keyboard
+- [x] Table and view menu: structure, SQL create script, export, import, rename, truncate, and drop, with typed confirmation for destructive work
 - [x] Routines in the tree, with parameter types
 - [x] Connection form rendered from `Form`
 - [x] Empty, error, and loading states, with row progress and a cancel button
@@ -237,6 +239,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 ### Export
 
 - [x] Streaming CSV and JSON export
+- [x] JSON Lines export, and whole-table export from the web app as a background download
 - [x] Neutralize spreadsheet formula cells by default
 
 **Exit:** the authors use it daily on real databases, targets hold in CI, and a public alpha is released.
@@ -255,11 +258,16 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 ### Structure
 
 - [ ] `Actions` pipeline with form, plan, preview, confirm, apply, and audit
-- [ ] Create, alter, and drop databases, schemas, and tables
-- [ ] Columns, indexes, and constraints
-- [ ] Views, triggers, and routines
-- [ ] Table designer with generated SQL preview
-- [ ] Show atomicity in previews, including MySQL's implicit DDL commit
+- [x] `Designer` facet: describe structure, plan structure changes, and a create script, across the plugin protocol and in the conformance suite
+- [x] Alter, rename, truncate, and drop tables, and drop views
+- [ ] Create and drop databases, schemas, and tables
+- [x] Columns, indexes, primary keys, and foreign keys
+- [ ] Check and exclusion constraints
+- [x] Triggers
+- [ ] Views and routines
+- [x] Table designer with generated SQL preview, in the web app, for existing tables
+- [ ] Table designer in the TUI
+- [x] Show atomicity in previews, including MySQL's implicit DDL commit
 
 ### Users and server
 
@@ -270,8 +278,10 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 
 ### Import and export
 
-- [ ] Streaming CSV and JSON import
-- [ ] SQL export with `INSERT` and `COPY`
+- [x] Streaming CSV, JSON, and JSON Lines import in the web app, gated and in one transaction (`Loader` facet)
+- [ ] Import in the CLI and TUI, with column mapping
+- [x] SQL export with `INSERT`
+- [ ] SQL export with `COPY`
 - [ ] Write-only XLSX export
 - [ ] Backup and restore through the user's `pg_dump` and `mysqldump`
 

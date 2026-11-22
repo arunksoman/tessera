@@ -112,7 +112,8 @@ func (c *Client) Open(ctx context.Context, cfg tile.ConnConfig, env tile.Env) (t
 		c.dropEnv(envID)
 		return nil, err
 	}
-	rc := &remoteConn{c: c, id: reply.Conn, env: envID, lang: reply.Language, tree: reply.Facets.Tree, keys: reply.Facets.TreeKeys}
+	rc := &remoteConn{c: c, id: reply.Conn, env: envID, lang: reply.Language, tree: reply.Facets.Tree, keys: reply.Facets.TreeKeys,
+		design: reply.Facets.TreeDesign}
 	return wrapConn(rc, reply.Facets), nil
 }
 
@@ -125,13 +126,14 @@ type connReq struct {
 }
 
 type remoteConn struct {
-	c    *Client
-	id   uint64
-	env  uint64
-	lang string
-	tree bool
-	keys bool
-	once sync.Once
+	c      *Client
+	id     uint64
+	env    uint64
+	lang   string
+	tree   bool
+	keys   bool
+	design bool
+	once   sync.Once
 }
 
 func (r *remoteConn) call(ctx context.Context, method string, params, out any) error {
@@ -180,10 +182,26 @@ func (r *remoteConn) Tree() tile.ObjectTree {
 	if !r.tree {
 		return nil
 	}
-	if r.keys {
-		return keysTree{remoteTree{r}}
+	t, k, d := remoteTree{r}, keysFacet{r}, designFacet{r}
+	switch {
+	case r.keys && r.design:
+		return struct {
+			remoteTree
+			keysFacet
+			designFacet
+		}{t, k, d}
+	case r.keys:
+		return struct {
+			remoteTree
+			keysFacet
+		}{t, k}
+	case r.design:
+		return struct {
+			remoteTree
+			designFacet
+		}{t, d}
 	}
-	return remoteTree{r}
+	return t
 }
 
 func (r *remoteConn) Language() tile.Language { return remoteLang{r} }
@@ -202,12 +220,34 @@ func (t remoteTree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.Obje
 	return d, err
 }
 
-type keysTree struct{ remoteTree }
+type keysFacet struct{ r *remoteConn }
 
-func (t keysTree) DescribeKeys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+func (t keysFacet) DescribeKeys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
 	var k tile.Keys
 	err := t.r.call(ctx, MTreeKeys, RefRequest{Conn: t.r.id, Ref: ref}, &k)
 	return k, err
+}
+
+type designFacet struct{ r *remoteConn }
+
+func (t designFacet) DescribeStructure(ctx context.Context, ref tile.ObjectRef) (tile.Structure, error) {
+	var s tile.Structure
+	err := t.r.call(ctx, MTreeStructure, RefRequest{Conn: t.r.id, Ref: ref}, &s)
+	return s, err
+}
+
+func (t designFacet) PlanStructure(ref tile.ObjectRef, changes []tile.StructureChange) (tile.Plan, error) {
+	ctx, cancel := short()
+	defer cancel()
+	var p tile.Plan
+	err := t.r.call(ctx, MTreePlanStructure, StructurePlanRequest{Conn: t.r.id, Ref: ref, Changes: changes}, &p)
+	return p, err
+}
+
+func (t designFacet) CreateScript(ctx context.Context, ref tile.ObjectRef) (string, error) {
+	var s string
+	err := t.r.call(ctx, MTreeCreateScript, RefRequest{Conn: t.r.id, Ref: ref}, &s)
+	return s, err
 }
 
 // remoteLang fails safe: the safety gate relies on it, so when the plugin cannot answer, a
@@ -280,6 +320,24 @@ func (e editorFacet) Plan(ref tile.ObjectRef, l tile.Layout, cs tile.ChangeSet) 
 	return p, err
 }
 
+type loaderFacet struct{ r *remoteConn }
+
+func (l loaderFacet) InsertPlan(ref tile.ObjectRef, fields []string, rows [][]tile.Value) (tile.Plan, error) {
+	ctx, cancel := short()
+	defer cancel()
+	var p tile.Plan
+	err := l.r.call(ctx, MLoaderInsertPlan, InsertRequest{Conn: l.r.id, Ref: ref, Fields: fields, Rows: rows}, &p)
+	return p, err
+}
+
+func (l loaderFacet) InsertScript(ref tile.ObjectRef, fields []string, rows [][]tile.Value) (string, error) {
+	ctx, cancel := short()
+	defer cancel()
+	var s string
+	err := l.r.call(ctx, MLoaderInsertScript, InsertRequest{Conn: l.r.id, Ref: ref, Fields: fields, Rows: rows}, &s)
+	return s, err
+}
+
 type explainerFacet struct{ r *remoteConn }
 
 // ExplainRequest returns an empty request if the plugin cannot answer, never the statement
@@ -294,50 +352,110 @@ func (e explainerFacet) ExplainRequest(stmt string, format tile.ExplainFormat) t
 	return req
 }
 
-// wrapConn returns a value whose type assertions match the facets the plugin reported.
+// wrapConn returns a value whose type assertions match the facets the plugin reported. Each
+// combination needs its own struct type, since a type assertion sees only static methods;
+// TestConnFacetCombinations checks every one.
 func wrapConn(r *remoteConn, f Facets) tile.Conn {
-	b, e, x := browserFacet{r}, editorFacet{r}, explainerFacet{r}
-	switch {
-	case f.Browser && f.Editor && f.Explainer:
+	b, e, x, l := browserFacet{r}, editorFacet{r}, explainerFacet{r}, loaderFacet{r}
+	var mask int
+	for i, on := range []bool{f.Browser, f.Editor, f.Explainer, f.Loader} {
+		if on {
+			mask |= 1 << i
+		}
+	}
+	switch mask {
+	case 1:
+		return struct {
+			*remoteConn
+			browserFacet
+		}{r, b}
+	case 2:
+		return struct {
+			*remoteConn
+			editorFacet
+		}{r, e}
+	case 3:
+		return struct {
+			*remoteConn
+			browserFacet
+			editorFacet
+		}{r, b, e}
+	case 4:
+		return struct {
+			*remoteConn
+			explainerFacet
+		}{r, x}
+	case 5:
+		return struct {
+			*remoteConn
+			browserFacet
+			explainerFacet
+		}{r, b, x}
+	case 6:
+		return struct {
+			*remoteConn
+			editorFacet
+			explainerFacet
+		}{r, e, x}
+	case 7:
 		return struct {
 			*remoteConn
 			browserFacet
 			editorFacet
 			explainerFacet
 		}{r, b, e, x}
-	case f.Browser && f.Editor:
+	case 8:
+		return struct {
+			*remoteConn
+			loaderFacet
+		}{r, l}
+	case 9:
+		return struct {
+			*remoteConn
+			browserFacet
+			loaderFacet
+		}{r, b, l}
+	case 10:
+		return struct {
+			*remoteConn
+			editorFacet
+			loaderFacet
+		}{r, e, l}
+	case 11:
 		return struct {
 			*remoteConn
 			browserFacet
 			editorFacet
-		}{r, b, e}
-	case f.Browser && f.Explainer:
+			loaderFacet
+		}{r, b, e, l}
+	case 12:
+		return struct {
+			*remoteConn
+			explainerFacet
+			loaderFacet
+		}{r, x, l}
+	case 13:
 		return struct {
 			*remoteConn
 			browserFacet
 			explainerFacet
-		}{r, b, x}
-	case f.Editor && f.Explainer:
+			loaderFacet
+		}{r, b, x, l}
+	case 14:
 		return struct {
 			*remoteConn
 			editorFacet
 			explainerFacet
-		}{r, e, x}
-	case f.Browser:
+			loaderFacet
+		}{r, e, x, l}
+	case 15:
 		return struct {
 			*remoteConn
 			browserFacet
-		}{r, b}
-	case f.Editor:
-		return struct {
-			*remoteConn
 			editorFacet
-		}{r, e}
-	case f.Explainer:
-		return struct {
-			*remoteConn
 			explainerFacet
-		}{r, x}
+			loaderFacet
+		}{r, b, e, x, l}
 	}
 	return r
 }

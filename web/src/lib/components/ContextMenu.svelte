@@ -71,7 +71,7 @@
 		{#if it === 'separator'}
 			<div class="sep" role="separator"></div>
 		{:else}
-			<button role="menuitem" disabled={it.disabled} onclick={() => run(it)}>
+			<button role="menuitem" class:danger={it.danger} disabled={it.disabled} onclick={() => run(it)}>
 				<span class="icon">{#if it.icon}<Icon name={it.icon} size={14} />{/if}</span>
 				<span class="label">{it.label}</span>
 				{#if it.hint}<span class="hint">{it.hint}</span>{/if}
@@ -114,6 +114,10 @@
 	button:focus-visible {
 		background: var(--selected);
 		outline: none;
+	}
+	button.danger,
+	button.danger .icon {
+		color: var(--danger);
 	}
 	button:disabled {
 		color: var(--muted);

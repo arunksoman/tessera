@@ -4,8 +4,10 @@
 	import ConnectionForm from '#lib/components/ConnectionForm.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+	import ObjectDialogs from '#lib/components/ObjectDialogs.svelte';
 	import SqlTab from '#lib/components/SqlTab.svelte';
 	import StartPage from '#lib/components/StartPage.svelte';
+	import StructureTab from '#lib/components/StructureTab.svelte';
 	import TileMark from '#lib/components/TileMark.svelte';
 	import { colorOf, summary } from '#lib/connections.ts';
 	import { app, type Theme } from '#lib/state.svelte.ts';
@@ -96,8 +98,8 @@
 						<div class="tab conn-{colorOf(app.profile(t.profile)?.color)}" class:on={t.id === app.active}>
 							<button role="tab" aria-selected={t.id === app.active} class="tab-label" onclick={() => (app.active = t.id)} title={t.title}>
 								<TileMark tile={app.profile(t.profile)?.tile ?? ''} size={14} />
-								<span class="kind"><Icon name={t.kind === 'sql' ? 'query' : 'table'} size={13} /></span>
-								<span class="text">{t.kind === 'browse' ? `${t.profile} · ${t.title}` : t.title}</span>
+								<span class="kind"><Icon name={{ sql: 'query', browse: 'table', structure: 'wrench' }[t.kind] as 'query'} size={13} /></span>
+								<span class="text">{t.kind === 'sql' ? t.title : `${t.profile} · ${t.title}`}</span>
 							</button>
 							<button class="close" aria-label="Close {t.title}" onclick={() => app.closeTab(t.id)}><Icon name="close" size={13} /></button>
 						</div>
@@ -107,7 +109,9 @@
 					{#each app.tabs as t (t.id)}
 						<!-- Tabs stay mounted, so editors and results survive switching. -->
 						<div class="pane" class:on={t.id === app.active} role="tabpanel">
-							{#if t.kind === 'sql'}<SqlTab tab={t} />{:else}<BrowseTab tab={t} />{/if}
+							{#if t.kind === 'sql'}<SqlTab tab={t} />{:else if t.kind === 'structure'}<StructureTab tab={t} />{:else}<BrowseTab
+									tab={t}
+								/>{/if}
 						</div>
 					{/each}
 				</div>
@@ -123,12 +127,22 @@
 				<span class="addr">{summary(tabProfile)}</span>
 				{#if tabProfile.readOnly}<span class="badge ro">read-only</span>{/if}
 			{/if}
+			{#each app.jobs as j (j.id)}
+				<span class="job" role="status">
+					<span class="spin" aria-hidden="true"></span>{j.label}…
+					<button class="job-cancel" onclick={j.cancel}>Cancel</button>
+				</span>
+			{/each}
 		</footer>
 	</div>
 {/if}
 
 {#if form}
 	<ConnectionForm editing={form.editing} onclose={() => (form = null)} />
+{/if}
+
+{#if app.dialog}
+	{#key app.dialog}<ObjectDialogs dialog={app.dialog} />{/key}
 {/if}
 
 {#if app.toast}
@@ -293,6 +307,40 @@
 	}
 	.addr {
 		opacity: 0.85;
+	}
+	.job {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: auto;
+		flex: none;
+	}
+	.spin {
+		width: 10px;
+		height: 10px;
+		border: 2px solid currentColor;
+		border-right-color: transparent;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.spin {
+			animation: none;
+		}
+	}
+	.job-cancel {
+		border: 1px solid currentColor;
+		border-radius: 3px;
+		background: none;
+		color: inherit;
+		font-size: 11px;
+		padding: 0 6px;
+		cursor: pointer;
 	}
 	.panes {
 		flex: 1;

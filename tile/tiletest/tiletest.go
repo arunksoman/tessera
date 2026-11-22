@@ -33,6 +33,8 @@ type Harness struct {
 	// CreateRoutine creates a function tt_add(a, b) returning their integer sum, in Schema.
 	// Nil skips the routine tests, for stores without routines.
 	CreateRoutine func(t *testing.T, s tile.Session)
+	// Design sets up the structure tests. Nil skips them, for stores without a Designer.
+	Design *Design
 }
 
 // Run runs the conformance suite.
@@ -60,6 +62,9 @@ func Run(t *testing.T, h Harness) {
 	t.Run("PlanGuards", func(t *testing.T) { testPlanGuards(t, h) })
 	t.Run("Explain", func(t *testing.T) { testExplain(t, h) })
 	t.Run("SessionPing", func(t *testing.T) { testSessionPing(t, h) })
+	t.Run("Design", func(t *testing.T) { testDesign(t, h) })
+	t.Run("CreateScript", func(t *testing.T) { testCreateScript(t, h) })
+	t.Run("ObjectActions", func(t *testing.T) { testObjectActions(t, h) })
 }
 
 func session(t *testing.T, c tile.Conn, opt tile.SessionOptions) tile.Session {
