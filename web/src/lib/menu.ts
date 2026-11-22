@@ -2,7 +2,7 @@ import type { IconName } from './icons/index.ts';
 
 /** One entry of a context menu, or a separator line. */
 export type MenuItem =
-	| { label: string; action: () => void; icon?: IconName; hint?: string; disabled?: boolean }
+	| { label: string; action: () => void; icon?: IconName; hint?: string; disabled?: boolean; danger?: boolean }
 	| 'separator';
 
 /** Where a menu opens, in viewport pixels, and what it holds. */

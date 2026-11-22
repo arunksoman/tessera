@@ -172,6 +172,12 @@ func (s *fakeStream) Close() error { return nil }
 // pair serves ft in-process over pipes and returns the host's client.
 func pair(t *testing.T, ft *fakeTile) (*Client, func()) {
 	t.Helper()
+	return pairTile(t, ft)
+}
+
+// pairTile serves any tile in-process.
+func pairTile(t *testing.T, ft tile.Tile) (*Client, func()) {
+	t.Helper()
 	hostR, pluginW := io.Pipe()
 	pluginR, hostW := io.Pipe()
 	served := make(chan error, 1)
@@ -454,5 +460,126 @@ func TestTreeFacetsAcrossProcessBoundary(t *testing.T) {
 	}
 	if _, err := kd.DescribeKeys(context.Background(), tile.ObjectRef{}); err == nil {
 		t.Fatal("plugin error lost")
+	}
+}
+
+// TestConnFacetCombinations checks wrapConn for every combination of connection facets.
+func TestConnFacetCombinations(t *testing.T) {
+	for mask := range 16 {
+		f := Facets{Browser: mask&1 != 0, Editor: mask&2 != 0, Explainer: mask&4 != 0, Loader: mask&8 != 0}
+		c := wrapConn(&remoteConn{}, f)
+		_, b := c.(tile.Browser)
+		_, e := c.(tile.Editor)
+		_, x := c.(tile.Explainer)
+		_, l := c.(tile.Loader)
+		if b != f.Browser || e != f.Editor || x != f.Explainer || l != f.Loader {
+			t.Errorf("facets %+v: browser %v editor %v explainer %v loader %v", f, b, e, x, l)
+		}
+	}
+}
+
+type fakeDesignTree struct{ fakeTree }
+
+func (fakeDesignTree) DescribeStructure(_ context.Context, ref tile.ObjectRef) (tile.Structure, error) {
+	if len(ref.Path) != 1 {
+		return tile.Structure{}, errors.New("no such object")
+	}
+	return tile.Structure{Fields: []tile.FieldDef{{Name: "id", Type: "int", Primary: true}},
+		Triggers: []tile.TriggerDef{{Name: "trg", Timing: "BEFORE", Events: []string{"INSERT"}, Action: "x"}}}, nil
+}
+
+func (fakeDesignTree) PlanStructure(ref tile.ObjectRef, cs []tile.StructureChange) (tile.Plan, error) {
+	var p tile.Plan
+	for _, c := range cs {
+		p.Steps = append(p.Steps, tile.PlanStep{Request: tile.Request{Text: string(c.Op) + " " + c.Name}, ExpectRows: -1})
+	}
+	return p, nil
+}
+
+func (fakeDesignTree) CreateScript(context.Context, tile.ObjectRef) (string, error) {
+	return "create docs", nil
+}
+
+type fakeBothTree struct {
+	fakeKeysTree
+	fakeDesignTree
+}
+
+func (fakeBothTree) Children(ctx context.Context, p tile.ObjectRef, pg tile.Page) ([]tile.Node, string, error) {
+	return fakeTree{}.Children(ctx, p, pg)
+}
+
+func (fakeBothTree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.ObjectDetail, error) {
+	return fakeTree{}.Describe(ctx, ref)
+}
+
+func TestDesignAcrossProcessBoundary(t *testing.T) {
+	c, _ := pair(t, &fakeTile{tree: fakeKeysTree{}})
+	if _, ok := open(t, c).Tree().(tile.Designer); ok {
+		t.Fatal("tree claims a design facet the plugin lacks")
+	}
+	c, _ = pair(t, &fakeTile{tree: fakeBothTree{}})
+	tree := open(t, c).Tree()
+	if _, ok := tree.(tile.KeyDescriber); !ok {
+		t.Fatal("key facet lost beside the design facet")
+	}
+	d, ok := tree.(tile.Designer)
+	if !ok {
+		t.Fatal("design facet lost")
+	}
+	ctx := context.Background()
+	s, err := d.DescribeStructure(ctx, tile.ObjectRef{}.Child("table", "docs"))
+	if err != nil || len(s.Fields) != 1 || !s.Fields[0].Primary || s.Triggers[0].Events[0] != "INSERT" {
+		t.Fatalf("structure = %+v, %v", s, err)
+	}
+	if _, err := d.DescribeStructure(ctx, tile.ObjectRef{}); err == nil {
+		t.Fatal("plugin error lost")
+	}
+	p, err := d.PlanStructure(tile.ObjectRef{}.Child("table", "docs"), []tile.StructureChange{{Op: tile.OpFieldDrop, Name: "a"}})
+	if err != nil || len(p.Steps) != 1 || p.Steps[0].Request.Text != "field.drop a" || p.Steps[0].ExpectRows != -1 {
+		t.Fatalf("plan = %+v, %v", p, err)
+	}
+	if s, err := d.CreateScript(ctx, tile.ObjectRef{}.Child("table", "docs")); err != nil || s != "create docs" {
+		t.Fatalf("script = %q, %v", s, err)
+	}
+}
+
+type fakeLoaderTile struct{ *fakeTile }
+
+func (f fakeLoaderTile) Open(ctx context.Context, cfg tile.ConnConfig, env tile.Env) (tile.Conn, error) {
+	c, err := f.fakeTile.Open(ctx, cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	return loaderConn{c.(*fakeConn)}, nil
+}
+
+type loaderConn struct{ *fakeConn }
+
+func (loaderConn) InsertPlan(_ tile.ObjectRef, fields []string, rows [][]tile.Value) (tile.Plan, error) {
+	return tile.Plan{Steps: []tile.PlanStep{{Request: tile.Request{Text: "insert " + strings.Join(fields, ","), Args: rows[0]}, ExpectRows: int64(len(rows))}}}, nil
+}
+
+func (loaderConn) InsertScript(_ tile.ObjectRef, _ []string, rows [][]tile.Value) (string, error) {
+	return "insert " + string(rows[0][0].Raw), nil
+}
+
+func TestLoaderAcrossProcessBoundary(t *testing.T) {
+	c, _ := pair(t, &fakeTile{})
+	if _, ok := open(t, c).(tile.Loader); ok {
+		t.Fatal("connection claims a loader facet the plugin lacks")
+	}
+	c, _ = pairTile(t, fakeLoaderTile{&fakeTile{}})
+	l, ok := open(t, c).(tile.Loader)
+	if !ok {
+		t.Fatal("loader facet lost")
+	}
+	rows := [][]tile.Value{{{Kind: tile.KindBytes, Raw: []byte{0xff, 0}}}}
+	p, err := l.InsertPlan(tile.ObjectRef{}, []string{"a"}, rows)
+	if err != nil || p.Steps[0].Request.Text != "insert a" || string(p.Steps[0].Request.Args[0].Raw) != "\xff\x00" || p.Steps[0].ExpectRows != 1 {
+		t.Fatalf("plan = %+v, %v", p, err)
+	}
+	if s, err := l.InsertScript(tile.ObjectRef{}, []string{"a"}, [][]tile.Value{{tile.Text("x")}}); err != nil || s != "insert x" {
+		t.Fatalf("script = %q, %v", s, err)
 	}
 }

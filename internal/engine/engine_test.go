@@ -27,6 +27,7 @@ type fakeTile struct {
 	pingErr       error
 	affected      *int64
 	lang          tile.Language // sqlish.Postgres when nil
+	tree          tile.ObjectTree
 }
 
 func (f *fakeTile) Manifest() tile.Manifest { return tile.Manifest{ID: "fake", Name: "Fake"} }
@@ -46,7 +47,7 @@ type fakeConn struct{ f *fakeTile }
 func (fakeConn) Capabilities() tile.Capabilities { return tile.Capabilities{} }
 func (fakeConn) Ping(context.Context) error      { return nil }
 func (c fakeConn) Close() error                  { c.f.closedConn++; return nil }
-func (fakeConn) Tree() tile.ObjectTree           { return nil }
+func (c fakeConn) Tree() tile.ObjectTree         { return c.f.tree }
 func (c fakeConn) Language() tile.Language {
 	if c.f.lang != nil {
 		return c.f.lang
@@ -67,12 +68,14 @@ func (s fakeSession) Execute(_ context.Context, req tile.Request) (tile.ResultSt
 	if s.f.failOn != "" && strings.Contains(req.Text, s.f.failOn) {
 		return nil, errors.New("boom")
 	}
-	return &fakeStream{f: s.f}, nil
+	return &fakeStream{f: s.f, args: len(req.Args), insert: strings.HasPrefix(req.Text, "INSERT")}, nil
 }
 
 type fakeStream struct {
-	f *fakeTile
-	i int
+	f      *fakeTile
+	i      int
+	args   int
+	insert bool // reports one added record per bound value
 }
 
 func (s *fakeStream) Close() error { s.f.closedStream++; return nil }
@@ -85,7 +88,9 @@ func (s *fakeStream) Next(context.Context) (tile.Frame, error) {
 		return tile.Frame{Batch: &tile.Batch{Rows: 2, Cells: []tile.Value{tile.Text("1"), tile.Text("2")}}}, nil
 	case 3:
 		sum := &tile.ResultSummary{}
-		if s.f.affected != nil {
+		if s.insert {
+			sum.HasAffected, sum.RowsAffected = true, int64(s.args)
+		} else if s.f.affected != nil {
 			sum.HasAffected, sum.RowsAffected = true, *s.f.affected
 		}
 		return tile.Frame{Done: sum}, nil

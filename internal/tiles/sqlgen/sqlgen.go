@@ -18,9 +18,10 @@ type Dialect struct {
 	Mark  func(i int) string // the placeholder for the i-th argument, from 1
 	// Text renders a quoted column as the text the server sends, so a guard compares what the
 	// user saw and works on types without an equality operator.
-	Text  func(column string) string
-	Like  string // case-insensitive LIKE
-	Begin string
+	Text   func(column string) string
+	Like   string // case-insensitive LIKE
+	Begin  string
+	Family Family
 }
 
 type builder struct {

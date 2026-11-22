@@ -55,10 +55,35 @@
 		else if (n.hasChildren) open[key(n)] = !open[key(n)];
 	}
 
+	async function showCreate(n: TreeNode) {
+		try {
+			const { script } = await api.createScript(profile, n.ref);
+			app.openSQL(profile, script);
+		} catch (e) {
+			app.notify(`Could not read the definition of ${n.label}: ${(e as Error).message}`, 'error');
+		}
+	}
+
 	function items(n: TreeNode): MenuItem[] {
 		const out: MenuItem[] = [];
+		const readOnly = !!app.profile(profile)?.readOnly;
+		const dialog = (kind: 'export' | 'import' | 'rename' | 'truncate' | 'drop') => () => (app.dialog = { kind, profile, ref: n.ref });
 		if (n.browsable) out.push({ label: 'Open data', icon: 'table', action: () => app.openBrowse(profile, n.ref) });
 		if (n.hasChildren) out.push({ label: open[key(n)] ? 'Collapse' : 'Expand', action: () => (open[key(n)] = !open[key(n)]) });
+		// Tables and views can be designed, exported, and managed; tables also take data.
+		const table = n.browsable && n.kind === 'table';
+		if (table || (n.browsable && n.kind === 'view')) {
+			out.push(
+				{ label: table && !readOnly ? 'Structure…' : 'View structure', icon: 'wrench', action: () => app.openStructure(profile, n.ref) },
+				{ label: 'SQL: Create', icon: 'query', action: () => showCreate(n) },
+				'separator',
+				{ label: 'Export…', icon: 'download', action: dialog('export') }
+			);
+			if (table) out.push({ label: 'Import data…', icon: 'upload', disabled: readOnly, action: dialog('import') });
+			out.push('separator', { label: 'Rename…', icon: 'edit', disabled: readOnly, action: dialog('rename') });
+			if (table) out.push({ label: 'Truncate…', icon: 'eraser', danger: true, disabled: readOnly, action: dialog('truncate') });
+			out.push({ label: `Drop ${n.kind}…`, icon: 'trash', danger: true, disabled: readOnly, action: dialog('drop') });
+		}
 		out.push('separator', { label: 'Copy name', icon: 'copy', action: () => copyText(n.label) });
 		// A routine's ref names its signature, which tells overloads apart.
 		const refName = n.ref[n.ref.length - 1]?.name ?? '';

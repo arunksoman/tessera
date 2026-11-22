@@ -60,6 +60,21 @@ func harnessFor(tl tile.Tile, port string) tiletest.Harness {
 		RunningSQL: func(marker string) string {
 			return fmt.Sprintf(`SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%s%%' AND pid <> pg_backend_pid()`, marker)
 		},
+		Design: &tiletest.Design{
+			IntType:       "integer",
+			TriggerAction: "EXECUTE FUNCTION tt_upper_name()",
+			Create: func(t *testing.T, s tile.Session) {
+				drop := func() {
+					exec(t, s, `DROP TABLE IF EXISTS tt_design, tt_design_renamed, tt_design_ref`)
+					exec(t, s, `DROP FUNCTION IF EXISTS tt_upper_name()`)
+				}
+				drop()
+				exec(t, s, `CREATE FUNCTION tt_upper_name() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN NEW.name := upper(NEW.name); RETURN NEW; END'`)
+				exec(t, s, `CREATE TABLE tt_design_ref (id integer PRIMARY KEY)`)
+				exec(t, s, `CREATE TABLE tt_design (id integer PRIMARY KEY, name varchar(50))`)
+				t.Cleanup(drop)
+			},
+		},
 		CreateRoutine: func(t *testing.T, s tile.Session) {
 			exec(t, s, `CREATE OR REPLACE FUNCTION tt_add(a int, b int) RETURNS int LANGUAGE sql AS 'SELECT a + b'`)
 			t.Cleanup(func() { exec(t, s, `DROP FUNCTION IF EXISTS tt_add(int, int)`) })

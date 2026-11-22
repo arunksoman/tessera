@@ -566,11 +566,12 @@ func (s *session) Ping(ctx context.Context) error {
 }
 
 var dialect = sqlgen.Dialect{
-	Quote: func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" },
-	Mark:  func(int) string { return "?" },
-	Text:  func(c string) string { return "CAST(" + c + " AS CHAR)" },
-	Like:  "LIKE",
-	Begin: "START TRANSACTION",
+	Quote:  func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" },
+	Mark:   func(int) string { return "?" },
+	Text:   func(c string) string { return "CAST(" + c + " AS CHAR)" },
+	Like:   "LIKE",
+	Begin:  "START TRANSACTION",
+	Family: sqlgen.FamilyMySQL,
 }
 
 const (

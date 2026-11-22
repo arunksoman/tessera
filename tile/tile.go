@@ -152,6 +152,114 @@ type ForeignKey struct {
 	TargetFields []string  `json:"target_fields"`
 }
 
+// Designer is an optional ObjectTree facet for objects whose structure can be read and changed,
+// as a relational table's columns, indexes, references, and triggers can. A store that lacks
+// some of these, such as triggers, leaves them empty and refuses changes to them in
+// PlanStructure.
+type Designer interface {
+	DescribeStructure(ctx context.Context, ref ObjectRef) (Structure, error)
+	// PlanStructure turns changes into exact steps, run in order. It has no side effects.
+	PlanStructure(ref ObjectRef, changes []StructureChange) (Plan, error)
+	// CreateScript returns text in the connection's language that creates the object as it
+	// is now, for reading or running elsewhere.
+	CreateScript(ctx context.Context, ref ObjectRef) (string, error)
+}
+
+// Structure describes an object's fields and what is defined on them.
+type Structure struct {
+	Fields    []FieldDef   `json:"fields"`
+	Indexes   []IndexDef   `json:"indexes,omitempty"`
+	Relations []Relation   `json:"relations,omitempty"`
+	Triggers  []TriggerDef `json:"triggers,omitempty"`
+}
+
+// FieldDef is one field as the store declares it. Type, Default, and the trigger texts below
+// are in the connection's language and are placed into the planned statements as written, so
+// they are never built from data, only typed by the user.
+type FieldDef struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"` // native type, such as varchar(50)
+	Nullable bool   `json:"nullable,omitempty"`
+	// Default is an expression, such as 0, 'none', or now(). Empty means no default.
+	Default string `json:"default,omitempty"`
+	Comment string `json:"comment,omitempty"`
+	Primary bool   `json:"primary,omitempty"`
+	// Collation names the field's collation where it differs by field.
+	Collation string `json:"collation,omitempty"`
+	// Extra holds other attributes the store keeps when a field is restated, such as
+	// auto_increment. Front-ends show it and send it back unchanged.
+	Extra string `json:"extra,omitempty"`
+}
+
+// IndexDef is an index, or a key the store enforces with one.
+type IndexDef struct {
+	Name    string   `json:"name"`
+	Fields  []string `json:"fields"`
+	Unique  bool     `json:"unique,omitempty"`
+	Primary bool     `json:"primary,omitempty"`
+	// Constraint means the index enforces a named constraint and is dropped with it.
+	Constraint bool `json:"constraint,omitempty"`
+	// Method is the index type where there is a choice, such as btree or fulltext.
+	Method string `json:"method,omitempty"`
+	// Definition is the store's own text for the index, for reading only.
+	Definition string `json:"definition,omitempty"`
+}
+
+// Relation is a foreign key with what happens to referring records when the target changes.
+// OnUpdate and OnDelete are one of RelationActions; empty means the store's default.
+type Relation struct {
+	ForeignKey
+	OnUpdate string `json:"on_update,omitempty"`
+	OnDelete string `json:"on_delete,omitempty"`
+}
+
+// RelationActions are the allowed Relation.OnUpdate and Relation.OnDelete values.
+var RelationActions = []string{"NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"}
+
+// TriggerDef is code the store runs when records change.
+type TriggerDef struct {
+	Name    string   `json:"name"`
+	Timing  string   `json:"timing"`             // BEFORE, AFTER, or INSTEAD OF
+	Events  []string `json:"events"`             // INSERT, UPDATE, DELETE, or TRUNCATE
+	ForEach string   `json:"for_each,omitempty"` // ROW or STATEMENT
+	// Condition limits when the trigger fires, where the store supports it. Empty means always.
+	Condition string `json:"condition,omitempty"`
+	// Action is what runs, such as EXECUTE FUNCTION f() or a statement block.
+	Action string `json:"action"`
+	// Definition is the store's own text for the trigger, for reading only.
+	Definition string `json:"definition,omitempty"`
+}
+
+// StructureOp names a change to an object's structure.
+type StructureOp string
+
+const (
+	OpRename       StructureOp = "rename" // Name is the new name
+	OpTruncate     StructureOp = "truncate"
+	OpDrop         StructureOp = "drop"
+	OpFieldAdd     StructureOp = "field.add"
+	OpFieldAlter   StructureOp = "field.alter" // From is the field as it was, Field as it becomes
+	OpFieldDrop    StructureOp = "field.drop"  // Name is the field
+	OpIndexAdd     StructureOp = "index.add"
+	OpIndexDrop    StructureOp = "index.drop" // Index is the index as described
+	OpRelationAdd  StructureOp = "relation.add"
+	OpRelationDrop StructureOp = "relation.drop" // Name is the relation
+	OpTriggerAdd   StructureOp = "trigger.add"
+	OpTriggerDrop  StructureOp = "trigger.drop" // Name is the trigger
+)
+
+// StructureChange is one change, with the part its Op needs set. Changing an index, relation,
+// or trigger is a drop followed by an add.
+type StructureChange struct {
+	Op       StructureOp `json:"op"`
+	Name     string      `json:"name,omitempty"`
+	Field    *FieldDef   `json:"field,omitempty"`
+	From     *FieldDef   `json:"from,omitempty"`
+	Index    *IndexDef   `json:"index,omitempty"`
+	Relation *Relation   `json:"relation,omitempty"`
+	Trigger  *TriggerDef `json:"trigger,omitempty"`
+}
+
 type ObjectDetail struct {
 	Sections []DetailSection `json:"sections"`
 }
@@ -429,9 +537,22 @@ type Plan struct {
 }
 
 type PlanStep struct {
-	Request    Request `json:"request"`
-	Preview    string  `json:"preview"` // for reading only: values rendered as literals
-	ExpectRows int64   `json:"expect_rows"`
+	Request Request `json:"request"`
+	Preview string  `json:"preview"` // for reading only: values rendered as literals
+	// ExpectRows is how many records the step must change. Negative means it is not checked,
+	// as for a structure change, whose count some stores report and others do not.
+	ExpectRows int64 `json:"expect_rows"`
+}
+
+// Loader is an optional Conn facet for adding records in bulk and writing them out as text.
+type Loader interface {
+	// InsertPlan builds a plan adding rows, each aligned with fields. It does no I/O. A caller
+	// with more rows than fit in one plan step runs Begin, then the steps of several plans,
+	// then Commit.
+	InsertPlan(ref ObjectRef, fields []string, rows [][]Value) (Plan, error)
+	// InsertScript renders rows as text in the connection's language that adds them, such as
+	// INSERT statements with values as literals, for export.
+	InsertScript(ref ObjectRef, fields []string, rows [][]Value) (string, error)
 }
 
 // Explainer is an optional Conn facet. It builds a request that plans stmt without running it.

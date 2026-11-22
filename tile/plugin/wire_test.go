@@ -34,6 +34,18 @@ func TestWireNames(t *testing.T) {
 		{tile.Keys{Primary: []string{"id"}, Foreign: []tile.ForeignKey{{Name: "fk", Fields: []string{"a"},
 			Target: tile.ObjectRef{}.Child("table", "t"), TargetFields: []string{"id"}}}},
 			`{"primary":["id"],"foreign":[{"name":"fk","fields":["a"],"target":{"path":[{"kind":"table","name":"t"}]},"target_fields":["id"]}]}`},
+		{tile.Structure{
+			Fields:    []tile.FieldDef{{Name: "id", Type: "int", Nullable: true, Default: "0", Comment: "c", Primary: true, Collation: "C", Extra: "x"}},
+			Indexes:   []tile.IndexDef{{Name: "i", Fields: []string{"id"}, Unique: true, Primary: true, Constraint: true, Method: "btree", Definition: "d"}},
+			Relations: []tile.Relation{{ForeignKey: tile.ForeignKey{Name: "fk"}, OnUpdate: "CASCADE", OnDelete: "SET NULL"}},
+			Triggers:  []tile.TriggerDef{{Name: "t", Timing: "BEFORE", Events: []string{"INSERT"}, ForEach: "ROW", Condition: "c", Action: "a", Definition: "d"}},
+		}, `{"fields":[{"name":"id","type":"int","nullable":true,"default":"0","comment":"c","primary":true,"collation":"C","extra":"x"}],` +
+			`"indexes":[{"name":"i","fields":["id"],"unique":true,"primary":true,"constraint":true,"method":"btree","definition":"d"}],` +
+			`"relations":[{"name":"fk","fields":null,"target":{"path":null},"target_fields":null,"on_update":"CASCADE","on_delete":"SET NULL"}],` +
+			`"triggers":[{"name":"t","timing":"BEFORE","events":["INSERT"],"for_each":"ROW","condition":"c","action":"a","definition":"d"}]}`},
+		{tile.StructureChange{Op: tile.OpFieldAlter, Name: "n", Field: &tile.FieldDef{Name: "b"}, From: &tile.FieldDef{Name: "a"}},
+			`{"op":"field.alter","name":"n","field":{"name":"b","type":""},"from":{"name":"a","type":""}}`},
+		{tile.PlanStep{Request: tile.Request{Text: "x"}, ExpectRows: -1}, `{"request":{"text":"x"},"preview":"","expect_rows":-1}`},
 	}
 	for _, c := range cases {
 		b, err := json.Marshal(c.v)

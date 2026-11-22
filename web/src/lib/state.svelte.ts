@@ -5,7 +5,18 @@ import { parseRecent, renameRecent, touchRecent, type Recent } from './connectio
 export type Tab =
 	| { id: string; kind: 'sql'; profile: string; title: string; sql: string }
 	// filter is what the tab opened with, such as the key of a referenced row.
-	| { id: string; kind: 'browse'; profile: string; title: string; ref: Ref; filter?: Filter[] };
+	| { id: string; kind: 'browse'; profile: string; title: string; ref: Ref; filter?: Filter[] }
+	| { id: string; kind: 'structure'; profile: string; title: string; ref: Ref };
+
+/** A dialog acting on one object from the tree's menu. */
+export type ObjectDialog = {
+	kind: 'export' | 'import' | 'rename' | 'truncate' | 'drop';
+	profile: string;
+	ref: Ref;
+};
+
+/** Work that runs on while the user does other things, shown in the footer. */
+export type Job = { id: string; label: string; cancel: () => void };
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -26,6 +37,8 @@ class AppState {
 	recent = $state<Recent[]>(readRecent());
 	/** Connections expanded in the sidebar tree. */
 	expanded = $state<Record<string, boolean>>({});
+	dialog = $state<ObjectDialog | null>(null);
+	jobs = $state<Job[]>([]);
 	private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 	activeTab = $derived(this.tabs.find((t) => t.id === this.active) ?? null);
@@ -80,6 +93,32 @@ class AppState {
 		const tab: Tab = { id: randomId(), kind: 'browse', profile, title: browseTitle(ref, filter) || profile, ref, filter };
 		this.tabs.push(tab);
 		this.active = tab.id;
+	}
+
+	/** Opens an object's structure, or switches to the tab already showing it. */
+	openStructure(profile: string, ref: Ref) {
+		this.used(profile);
+		const key = JSON.stringify(ref);
+		const open = this.tabs.find((t) => t.kind === 'structure' && t.profile === profile && JSON.stringify(t.ref) === key);
+		if (open) {
+			this.active = open.id;
+			return;
+		}
+		const tab: Tab = { id: randomId(), kind: 'structure', profile, title: ref[ref.length - 1]?.name ?? profile, ref };
+		this.tabs.push(tab);
+		this.active = tab.id;
+	}
+
+	/** Runs work in the background, listed in the footer until it ends. */
+	async runJob<T>(label: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+		const ctl = new AbortController();
+		const job: Job = { id: randomId(), label, cancel: () => ctl.abort() };
+		this.jobs.push(job);
+		try {
+			return await work(ctl.signal);
+		} finally {
+			this.jobs = this.jobs.filter((j) => j.id !== job.id);
+		}
 	}
 
 	closeTab(id: string) {

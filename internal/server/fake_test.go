@@ -27,6 +27,7 @@ type fakeDB struct {
 	conflict bool
 	stopped  bool
 	failOpen bool
+	inserted []tile.Value
 }
 
 func newFakeDB(n int) *fakeDB {
@@ -133,6 +134,30 @@ func (fakeConn) Plan(ref tile.ObjectRef, l tile.Layout, cs tile.ChangeSet) (tile
 
 type fakeTree struct{}
 
+func (fakeTree) DescribeStructure(_ context.Context, ref tile.ObjectRef) (tile.Structure, error) {
+	return tile.Structure{
+		Fields:   []tile.FieldDef{{Name: "id", Type: "int", Primary: true}, {Name: "name", Type: "text", Nullable: true, Comment: "who"}},
+		Indexes:  []tile.IndexDef{{Name: "items_pkey", Fields: []string{"id"}, Unique: true, Primary: true, Constraint: true}},
+		Triggers: []tile.TriggerDef{{Name: "trg", Timing: "BEFORE", Events: []string{"INSERT"}, ForEach: "ROW", Action: "EXECUTE FUNCTION f()"}},
+	}, nil
+}
+
+func (fakeTree) PlanStructure(ref tile.ObjectRef, changes []tile.StructureChange) (tile.Plan, error) {
+	return fakeDialect.PlanStructure(ref, changes)
+}
+
+func (fakeTree) CreateScript(context.Context, tile.ObjectRef) (string, error) {
+	return "CREATE TABLE items (id int);", nil
+}
+
+func (fakeConn) InsertPlan(ref tile.ObjectRef, fields []string, rows [][]tile.Value) (tile.Plan, error) {
+	return fakeDialect.InsertPlan(ref, fields, rows)
+}
+
+func (fakeConn) InsertScript(ref tile.ObjectRef, fields []string, rows [][]tile.Value) (string, error) {
+	return fakeDialect.InsertScript(ref, fields, rows)
+}
+
 func (fakeTree) Children(_ context.Context, parent tile.ObjectRef, p tile.Page) ([]tile.Node, string, error) {
 	if len(parent.Path) == 0 {
 		return []tile.Node{{Ref: parent.Child("schema", "app"), Kind: "schema", Label: "app", HasChildren: true}}, "", nil
@@ -182,8 +207,14 @@ func (s fakeSession) Execute(ctx context.Context, req tile.Request) (tile.Result
 			}
 		}
 	case strings.HasPrefix(req.Text, "BEGIN"), strings.HasPrefix(req.Text, "COMMIT"),
-		strings.HasPrefix(req.Text, "ROLLBACK"), strings.HasPrefix(req.Text, "DROP"), strings.HasPrefix(req.Text, "DELETE"):
+		strings.HasPrefix(req.Text, "ROLLBACK"), strings.HasPrefix(req.Text, "DROP"), strings.HasPrefix(req.Text, "DELETE"),
+		strings.HasPrefix(req.Text, "ALTER"), strings.HasPrefix(req.Text, "CREATE"), strings.HasPrefix(req.Text, "TRUNCATE"),
+		strings.HasPrefix(req.Text, "COMMENT"):
 		st.control = true
+	case strings.HasPrefix(req.Text, "INSERT"):
+		st.write = true
+		st.affected = int64(strings.Count(req.Text, "), (") + 1)
+		s.db.inserted = append(s.db.inserted, req.Args...)
 	case strings.HasPrefix(req.Text, "SCAN "):
 		// Returns at most 3 keys per call whatever the count, and a cursor while more remain.
 		var start, count int
