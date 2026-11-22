@@ -163,8 +163,12 @@ func (r treeRow) label() string {
 		mark = "▸ "
 	}
 	suffix := ""
-	if n.node.Kind == "view" {
-		suffix = " (view)"
+	switch n.node.Kind {
+	case "view", "function", "procedure", "aggregate":
+		suffix = " (" + n.node.Kind + ")"
+	}
+	if n.node.Detail != "" {
+		suffix += " " + ioformat.Display(n.node.Detail)
 	}
 	if n.loading {
 		suffix += " …"

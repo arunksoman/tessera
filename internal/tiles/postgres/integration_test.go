@@ -60,6 +60,10 @@ func harnessFor(tl tile.Tile, port string) tiletest.Harness {
 		RunningSQL: func(marker string) string {
 			return fmt.Sprintf(`SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%s%%' AND pid <> pg_backend_pid()`, marker)
 		},
+		CreateRoutine: func(t *testing.T, s tile.Session) {
+			exec(t, s, `CREATE OR REPLACE FUNCTION tt_add(a int, b int) RETURNS int LANGUAGE sql AS 'SELECT a + b'`)
+			t.Cleanup(func() { exec(t, s, `DROP FUNCTION IF EXISTS tt_add(int, int)`) })
+		},
 		HostileTable: func(t *testing.T, s tile.Session) string {
 			name := "we\"ird`; DROP TABLE orders;--'x"
 			quoted := `"we""ird` + "`" + `; DROP TABLE orders;--'x"`

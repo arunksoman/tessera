@@ -4,7 +4,9 @@ package tiletest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,9 @@ type Harness struct {
 	RunningSQL func(marker string) string
 	// HostileTable creates a table with a name full of quoting characters and returns it.
 	HostileTable func(t *testing.T, s tile.Session) string
+	// CreateRoutine creates a function tt_add(a, b) returning their integer sum, in Schema.
+	// Nil skips the routine tests, for stores without routines.
+	CreateRoutine func(t *testing.T, s tile.Session)
 }
 
 // Run runs the conformance suite.
@@ -43,6 +48,8 @@ func Run(t *testing.T, h Harness) {
 	t.Run("SessionState", func(t *testing.T) { testSessionPooled(t, h) })
 	t.Run("TreePaging", func(t *testing.T) { testTreePaging(t, h) })
 	t.Run("Describe", func(t *testing.T) { testDescribe(t, h) })
+	t.Run("TreeRoutines", func(t *testing.T) { testTreeRoutines(t, h) })
+	t.Run("Keys", func(t *testing.T) { testKeys(t, h) })
 	t.Run("HostileIdentifiers", func(t *testing.T) { testHostile(t, h) })
 	t.Run("BrowseLayout", func(t *testing.T) { testBrowseLayout(t, h) })
 	t.Run("BrowsePaging", func(t *testing.T) { testBrowsePaging(t, h) })
@@ -335,17 +342,26 @@ func testTreePaging(t *testing.T, h Harness) {
 		t.Fatal(err)
 	}
 	want := h.Schema.Path[0].Name
-	found := false
+	found, system := false, ""
 	for _, n := range roots {
 		if n.Label == want && n.HasChildren {
 			found = true
+			if system != "" {
+				t.Errorf("user schema %q listed after system schema %q", want, system)
+			}
 		}
-		if n.Label == "information_schema" || n.Label == "pg_catalog" || n.Label == "mysql" || n.Label == "performance_schema" {
-			t.Errorf("system schema %q listed by default", n.Label)
+		if system == "" && slices.Contains([]string{"information_schema", "pg_catalog", "mysql", "performance_schema", "sys"}, n.Label) {
+			system = n.Label
 		}
 	}
 	if !found {
 		t.Fatalf("schema %q not in %+v", want, roots)
+	}
+
+	// One schema per page must still reach every schema exactly once, across the system ones.
+	byOne := allChildren(t, tree, tile.ObjectRef{}, 1)
+	if len(byOne) != len(allChildren(t, tree, tile.ObjectRef{}, 100)) {
+		t.Fatalf("paging by one listed %d schemas", len(byOne))
 	}
 
 	// One table per page must still reach every table exactly once.
@@ -371,6 +387,111 @@ func testTreePaging(t *testing.T, h Harness) {
 		if seen[name] != 1 {
 			t.Fatalf("%s seen %d times in %v", name, seen[name], seen)
 		}
+	}
+}
+
+// allChildren reads every page of parent's children, failing on a repeated node.
+func allChildren(t *testing.T, tree tile.ObjectTree, parent tile.ObjectRef, limit int) []tile.Node {
+	t.Helper()
+	var out []tile.Node
+	seen := map[string]bool{}
+	cursor := ""
+	for range 100_000 {
+		nodes, next, err := tree.Children(context.Background(), parent, tile.Page{Cursor: cursor, Limit: limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(nodes) > limit {
+			t.Fatalf("limit %d ignored: %d nodes", limit, len(nodes))
+		}
+		for _, n := range nodes {
+			id := fmt.Sprint(n.Ref.Path)
+			if seen[id] {
+				t.Fatalf("%s listed twice", id)
+			}
+			seen[id] = true
+			out = append(out, n)
+		}
+		if next == "" {
+			return out
+		}
+		cursor = next
+	}
+	t.Fatal("paging never ended")
+	return nil
+}
+
+func testTreeRoutines(t *testing.T, h Harness) {
+	if h.CreateRoutine == nil {
+		t.Skip("no routines")
+	}
+	c := h.Open(t)
+	h.CreateRoutine(t, session(t, c, tile.SessionOptions{}))
+	tree := c.Tree()
+
+	var fn *tile.Node
+	tables := 0
+	for _, n := range allChildren(t, tree, h.Schema, 1) {
+		switch {
+		case n.Label == "tt_add":
+			if fn != nil {
+				t.Fatal("tt_add listed twice")
+			}
+			fn = &n
+		case n.Label == "customers" || n.Label == "orders":
+			if fn != nil {
+				t.Errorf("table %s listed after routines", n.Label)
+			}
+			tables++
+		}
+	}
+	if fn == nil || tables != 2 {
+		t.Fatalf("routine found: %v, tables: %d", fn != nil, tables)
+	}
+	if fn.Kind != "function" || fn.Browsable || !fn.HasChildren {
+		t.Fatalf("routine node = %+v", fn)
+	}
+	params := allChildren(t, tree, fn.Ref, 100)
+	var got []string
+	for _, p := range params {
+		if p.Detail == "" || p.HasChildren || p.Browsable {
+			t.Errorf("parameter node = %+v", p)
+		}
+		got = append(got, p.Kind+" "+p.Label)
+	}
+	if strings.Join(got, ",") != "parameter a,parameter b,return returns" {
+		t.Fatalf("routine children = %v", got)
+	}
+}
+
+func testKeys(t *testing.T, h Harness) {
+	kd, ok := h.Open(t).Tree().(tile.KeyDescriber)
+	if !ok {
+		t.Skip("no KeyDescriber facet")
+	}
+	ctx := context.Background()
+	k, err := kd.DescribeKeys(ctx, h.Schema.Child("table", "orders"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(k.Primary, []string{"id"}) || len(k.Foreign) != 1 {
+		t.Fatalf("orders keys = %+v", k)
+	}
+	fk := k.Foreign[0]
+	if fk.Name == "" || !slices.Equal(fk.Fields, []string{"customer_id"}) || !slices.Equal(fk.TargetFields, []string{"id"}) ||
+		fmt.Sprint(fk.Target.Path) != fmt.Sprint(h.Schema.Child("table", "customers").Path) {
+		t.Fatalf("orders foreign key = %+v", fk)
+	}
+	// The target must be browsable as the tree names it.
+	if _, ok := h.Open(t).(tile.Browser); ok {
+		layoutOf(t, h.Open(t), fk.Target)
+	}
+	k, err = kd.DescribeKeys(ctx, h.Schema.Child("table", "customers"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(k.Primary, []string{"id"}) || len(k.Foreign) != 0 {
+		t.Fatalf("customers keys = %+v", k)
 	}
 }
 

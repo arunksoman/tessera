@@ -167,7 +167,7 @@ type Value struct {
 }
 ```
 
-Optional features are separate facets (`Browser`, `Editor`, `Actions`, `Explainer`, `Insight`, `BulkIO`), discovered by type assertion and advertised in `Capabilities`. New features become new facets, so existing plugins keep working.
+Optional features are separate facets (`Browser`, `Editor`, `Actions`, `Explainer`, `Insight`, `BulkIO`), discovered by type assertion and advertised in `Capabilities`. New features become new facets, so existing plugins keep working. `KeyDescriber` is a facet of the `ObjectTree` rather than the `Conn`: it reports an object's primary key and its foreign keys, each naming its target as a tree ref, so a front-end can mark key columns and jump to a referenced record without knowing SQL. Document and key-value tiles leave it out.
 
 Transactions and schema changes are reported by each tile's `Language` through `Classification.Tx` and `Classification.Schema`. The engine never matches verbs, so the same console tracks SQL `BEGIN`/`COMMIT` and Redis `MULTI`/`EXEC`. An analytical database leaves out the `tx.*` capabilities, and front-ends then show no transaction state.
 

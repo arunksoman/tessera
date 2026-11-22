@@ -424,9 +424,23 @@ func kindOf(dbType string) tile.ValueKind {
 type tree struct{ c *conn }
 
 const (
+	// System schemas come after user ones.
 	schemasSQL = `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA
-		WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') AND SCHEMA_NAME > ?
+		WHERE (SCHEMA_NAME IN ('information_schema', 'mysql', 'performance_schema', 'sys')) = ? AND SCHEMA_NAME > ?
 		ORDER BY SCHEMA_NAME LIMIT ?`
+	routinesSQL = `SELECT ROUTINE_NAME FROM information_schema.ROUTINES
+		WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ? AND ROUTINE_NAME > ?
+		ORDER BY ROUTINE_NAME LIMIT ?`
+	// Position 0 is a function's result.
+	parametersSQL = `SELECT COALESCE(PARAMETER_NAME, ''), COALESCE(PARAMETER_MODE, ''), DTD_IDENTIFIER
+		FROM information_schema.PARAMETERS
+		WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? AND ROUTINE_TYPE = ?
+		ORDER BY ORDINAL_POSITION = 0, ORDINAL_POSITION`
+	// One row per column of the primary key, then of each foreign key, in key order.
+	keyColumnsSQL = `SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+		FROM information_schema.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND (CONSTRAINT_NAME = 'PRIMARY' OR REFERENCED_TABLE_NAME IS NOT NULL)
+		ORDER BY CONSTRAINT_NAME <> 'PRIMARY', CONSTRAINT_NAME, ORDINAL_POSITION`
 	tablesSQL = `SELECT TABLE_NAME, CASE WHEN TABLE_TYPE = 'VIEW' THEN 'view' ELSE 'table' END
 		FROM information_schema.TABLES
 		WHERE TABLE_SCHEMA = ? AND TABLE_NAME > ?
@@ -441,51 +455,87 @@ const (
 		GROUP BY INDEX_NAME ORDER BY INDEX_NAME`
 )
 
+// routineTypes maps routine node kinds to ROUTINE_TYPE.
+var routineTypes = map[string]string{"function": "FUNCTION", "procedure": "PROCEDURE"}
+
 func (t tree) Children(ctx context.Context, parent tile.ObjectRef, p tile.Page) ([]tile.Node, string, error) {
-	limit := p.Limit
-	if limit <= 0 {
-		limit = 200
+	// stage lists nodes from one catalog query, whose bound arguments end with after and n.
+	stage := func(text string, node func(r []tile.Value) tile.Node, args ...any) sqlgen.Stage {
+		return func(after string, n int) ([]tile.Node, error) {
+			s, err := t.section(ctx, "", text, append(args, after, n)...)
+			nodes := make([]tile.Node, len(s.Rows))
+			for i, r := range s.Rows {
+				nodes[i] = node(r)
+			}
+			return nodes, err
+		}
 	}
-	var rows *sql.Rows
-	var err error
 	switch len(parent.Path) {
 	case 0:
-		rows, err = t.c.db.QueryContext(ctx, schemasSQL, p.Cursor, limit+1)
-	case 1:
-		rows, err = t.c.db.QueryContext(ctx, tablesSQL, parent.Path[0].Name, p.Cursor, limit+1)
-	default:
-		return nil, "", nil
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	defer rows.Close()
-	var nodes []tile.Node
-	for rows.Next() {
-		var name, kind string
-		if len(parent.Path) == 0 {
-			err = rows.Scan(&name)
-		} else {
-			err = rows.Scan(&name, &kind)
+		schema := func(r []tile.Value) tile.Node {
+			name := string(r[0].Raw)
+			return tile.Node{Ref: parent.Child("schema", name), Kind: "schema", Label: name, HasChildren: true}
 		}
+		return sqlgen.PageStages(p.Limit, p.Cursor, stage(schemasSQL, schema, false), stage(schemasSQL, schema, true))
+	case 1:
+		table := func(r []tile.Value) tile.Node {
+			name, kind := string(r[0].Raw), string(r[1].Raw)
+			return tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, Browsable: true}
+		}
+		routine := func(kind string) func(r []tile.Value) tile.Node {
+			return func(r []tile.Value) tile.Node {
+				name := string(r[0].Raw)
+				return tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, HasChildren: true}
+			}
+		}
+		schema := parent.Path[0].Name
+		return sqlgen.PageStages(p.Limit, p.Cursor, stage(tablesSQL, table, schema),
+			stage(routinesSQL, routine("function"), schema, "FUNCTION"),
+			stage(routinesSQL, routine("procedure"), schema, "PROCEDURE"))
+	case 2:
+		typ, ok := routineTypes[parent.Path[1].Kind]
+		if !ok {
+			return nil, "", nil
+		}
+		s, err := t.section(ctx, "", parametersSQL, parent.Path[0].Name, parent.Path[1].Name, typ)
 		if err != nil {
 			return nil, "", err
 		}
-		if len(parent.Path) == 0 {
-			nodes = append(nodes, tile.Node{Ref: parent.Child("schema", name), Kind: "schema", Label: name, HasChildren: true})
-		} else {
-			nodes = append(nodes, tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, Browsable: true})
+		nodes := make([]tile.Node, len(s.Rows))
+		for i, r := range s.Rows {
+			name, mode, typ := string(r[0].Raw), string(r[1].Raw), string(r[2].Raw)
+			if name == "" {
+				nodes[i] = tile.Node{Ref: parent.Child("return", "returns"), Kind: "return", Label: "returns", Detail: typ}
+				continue
+			}
+			if mode != "" && mode != "IN" {
+				typ = mode + " " + typ
+			}
+			nodes[i] = tile.Node{Ref: parent.Child("parameter", name), Kind: "parameter", Label: name, Detail: typ}
 		}
+		return sqlgen.PageSlice(nodes, p)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, "", err
+	return nil, "", nil
+}
+
+// DescribeKeys reads the primary key and the foreign keys from information_schema.
+func (t tree) DescribeKeys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	if len(ref.Path) != 2 {
+		return tile.Keys{}, fmt.Errorf("mysql: cannot describe keys of %v", ref.Path)
 	}
-	next := ""
-	if len(nodes) > limit {
-		nodes = nodes[:limit]
-		next = nodes[limit-1].Label
+	s, err := t.section(ctx, "", keyColumnsSQL, ref.Path[0].Name, ref.Path[1].Name)
+	if err != nil {
+		return tile.Keys{}, err
 	}
-	return nodes, next, nil
+	var k tile.Keys
+	for _, r := range s.Rows {
+		if string(r[0].Raw) == "PRIMARY" {
+			k.Primary = append(k.Primary, string(r[1].Raw))
+			continue
+		}
+		k.Foreign = sqlgen.AddForeign(k.Foreign, string(r[0].Raw), string(r[1].Raw), string(r[2].Raw), string(r[3].Raw), string(r[4].Raw))
+	}
+	return k, nil
 }
 
 func (t tree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.ObjectDetail, error) {

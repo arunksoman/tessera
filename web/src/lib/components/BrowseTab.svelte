@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { api, ApiError, type Cell, type Change, type Field, type Filter, type Layout, type Plan } from '#lib/api.ts';
+	import { api, ApiError, cellText, type Cell, type Change, type Field, type Filter, type Keys, type Layout, type Plan } from '#lib/api.ts';
+	import { columnMarks, followFilters, withLayoutTypes } from '#lib/keys.ts';
+	import type { MenuItem } from '#lib/menu.ts';
 	import { untrack } from 'svelte';
 	import { app, type Tab } from '#lib/state.svelte.ts';
 	import Confirm from './Confirm.svelte';
@@ -29,7 +31,9 @@
 	let done = $state(false);
 	let error = $state('');
 	let sort = $state<{ field: string; desc: boolean } | null>(null);
-	let filters = $state<Filter[]>([]);
+	// A tab opened from a foreign key starts filtered to the referenced row.
+	let filters = $state<Filter[]>(untrack(() => (tab.filter ?? []).map((f) => ({ ...f }))));
+	let keys = $state<Keys | null>(null);
 	let draft = $state<{ field: string; op: string; value: string }>({ field: '', op: '~', value: '' });
 	let pending = new Map<string, Cell>();
 	let pendingVersion = $state(0);
@@ -45,6 +49,9 @@
 	const editableTable = $derived(!!layout && layout.key.length > 0 && !profile?.readOnly);
 	const pendingCount = $derived((void pendingVersion, pending.size));
 	const loaded = $derived((void version, rows.length));
+	const marks = $derived(columnMarks(keys));
+	// Show each column's declared type, such as numeric(4,2) or an enum, not the wire type.
+	const shown = $derived(layout ? withLayoutTypes(fields, layout.fields) : fields);
 
 	async function load(more = false) {
 		if (loading && more) return;
@@ -89,7 +96,84 @@
 	$effect(() => {
 		void tab.ref;
 		untrack(reload);
+		untrack(loadKeys);
 	});
+
+	// Keys only decorate the grid, so failing to read them is not an error worth showing.
+	async function loadKeys() {
+		const ref = tab.ref;
+		try {
+			const k = await api.keys(tab.profile, ref);
+			if (ref === tab.ref) keys = k;
+		} catch {
+			keys = null;
+		}
+	}
+
+	const names = () => fields.map((f) => f.name);
+	const short = (v: Cell) => cellText(v, 24);
+
+	function follow(r: number, c: number) {
+		const fk = marks[fields[c]?.name]?.fk;
+		if (!fk) return;
+		const f = followFilters(fk, names(), rows[r]);
+		if (!f) {
+			app.notify('This row refers to no record: its key is NULL', 'error');
+			return;
+		}
+		app.openBrowse(tab.profile, fk.target, f);
+	}
+
+	function setSort(field: string, desc: boolean | null) {
+		if (!guardPending()) return;
+		sort = desc === null ? null : { field, desc };
+		reload();
+	}
+
+	function quickFilter(field: string, op: string, value: Cell) {
+		if (!guardPending()) return;
+		filters.push({ field, op, value });
+		reload();
+	}
+
+	function sortItems(field: string): MenuItem[] {
+		return [
+			{ label: 'Sort ascending', action: () => setSort(field, false), disabled: sort?.field === field && !sort.desc },
+			{ label: 'Sort descending', action: () => setSort(field, true), disabled: sort?.field === field && sort.desc },
+			{ label: 'Clear sort', action: () => setSort(field, null), disabled: sort?.field !== field }
+		];
+	}
+
+	function menu(r: number | null, c: number): MenuItem[] {
+		const name = fields[c]?.name;
+		if (!name || !layout?.fields.some((f) => f.name === name)) return [];
+		if (r === null) {
+			return [
+				...sortItems(name),
+				'separator',
+				{ label: `Filter: ${name} is null`, icon: 'filter', action: () => quickFilter(name, 'null', null) },
+				{ label: `Filter: ${name} is not null`, icon: 'filter', action: () => quickFilter(name, '!null', null) }
+			];
+		}
+		const v = rows[r][c];
+		const items: MenuItem[] = [];
+		const fk = marks[name]?.fk;
+		if (fk) {
+			const target = fk.target[fk.target.length - 1]?.name ?? '';
+			const can = !!followFilters(fk, names(), rows[r]);
+			items.push({ label: `Open referenced row in ${target}`, icon: 'link', disabled: !can, action: () => follow(r, c) }, 'separator');
+		}
+		if (typeof v === 'string') {
+			items.push(
+				{ label: `Filter: ${name} = ${short(v)}`, icon: 'filter', action: () => quickFilter(name, '=', v) },
+				{ label: `Filter: ${name} ≠ ${short(v)}`, icon: 'filter', action: () => quickFilter(name, '!=', v) }
+			);
+		} else if (v === null) {
+			items.push({ label: `Filter: ${name} is null`, icon: 'filter', action: () => quickFilter(name, 'null', null) });
+		}
+		if (v !== null) items.push({ label: `Filter: ${name} is not null`, icon: 'filter', action: () => quickFilter(name, '!null', null) });
+		return [...items, 'separator', ...sortItems(name)];
+	}
 
 	function guardPending() {
 		return pending.size === 0 || confirm(`Discard ${pending.size} unsaved change(s)?`);
@@ -231,7 +315,7 @@
 			<div class="pad"><div class="error-box" role="alert">{error}</div></div>
 		{:else if fields.length}
 			<Grid
-				{fields}
+				fields={shown}
 				{rows}
 				{version}
 				{sort}
@@ -242,6 +326,9 @@
 				{onedit}
 				onnearend={() => !done && !loading && load(true)}
 				label={tab.title}
+				{marks}
+				onfollow={follow}
+				{menu}
 			/>
 		{:else if loading}
 			<div class="pad muted">Loading…</div>
@@ -253,7 +340,7 @@
 		{#if layout && layout.estimate >= 0}<span class="muted">about {layout.estimate.toLocaleString()} in table</span>{/if}
 		{#if loading}<span class="muted">loading…</span>{/if}
 		<span class="spacer"></span>
-		{#if editableTable}<span class="muted">Double-click or Enter to edit a cell</span>{/if}
+		<span class="muted">{editableTable ? 'Double-click or Enter to edit a cell. ' : ''}Right-click for more</span>
 	</div>
 </div>
 

@@ -233,6 +233,7 @@ type nodeOut struct {
 	Label       string              `json:"label"`
 	HasChildren bool                `json:"hasChildren"`
 	Browsable   bool                `json:"browsable"`
+	Detail      string              `json:"detail"`
 }
 
 type treeOut struct {
@@ -258,6 +259,44 @@ func TestTreePages(t *testing.T) {
 		t.Fatalf("%+v", page)
 	}
 	if code := f.call("POST", "/api/conns/nope/tree", map[string]any{"ref": []any{}}, nil); code != http.StatusNotFound {
+		t.Fatalf("unknown profile: %d", code)
+	}
+	page = treeOut{}
+	f.call("POST", "/api/conns/dev/tree", map[string]any{"ref": append(root.Nodes[0].Ref, map[string]string{"kind": "function", "name": "f(int)"})}, &page)
+	if len(page.Nodes) != 1 || page.Nodes[0].Detail != "int" {
+		t.Fatalf("detail lost: %+v", page)
+	}
+}
+
+func TestKeys(t *testing.T) {
+	f := newFixture(t, store.Profile{Name: "dev"})
+	f.login()
+	var k struct {
+		Primary []string `json:"primary"`
+		Foreign []struct {
+			Name         string              `json:"name"`
+			Fields       []string            `json:"fields"`
+			Target       []map[string]string `json:"target"`
+			TargetFields []string            `json:"targetFields"`
+		} `json:"foreign"`
+	}
+	if code := f.call("POST", "/api/conns/dev/keys", map[string]any{"ref": items}, &k); code != 200 {
+		t.Fatalf("keys: %d", code)
+	}
+	if len(k.Primary) != 1 || k.Primary[0] != "id" || len(k.Foreign) != 1 {
+		t.Fatalf("keys = %+v", k)
+	}
+	fk := k.Foreign[0]
+	if fk.Name != "items_name_fk" || fk.Fields[0] != "name" || fk.TargetFields[0] != "label" || len(fk.Target) != 2 || fk.Target[1]["name"] != "report" || fk.Target[1]["kind"] != "view" {
+		t.Fatalf("foreign key = %+v", fk)
+	}
+	// An object without keys still answers with empty lists, never null.
+	var raw map[string]any
+	f.call("POST", "/api/conns/dev/keys", map[string]any{"ref": []map[string]string{{"kind": "db", "name": "0"}}}, &raw)
+	if p, ok := raw["primary"].([]any); !ok || len(p) != 0 {
+		t.Fatalf("empty keys = %v", raw)
+	}
+	if code := f.call("POST", "/api/conns/nope/keys", map[string]any{"ref": items}, nil); code != http.StatusNotFound {
 		t.Fatalf("unknown profile: %d", code)
 	}
 }

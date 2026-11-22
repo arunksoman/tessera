@@ -136,7 +136,7 @@ func (s *server) handle(ctx context.Context, method string, raw json.RawMessage)
 		return []string{}, nil
 	case MOpen:
 		return s.open(ctx, raw)
-	case MConnSession, MConnCaps, MConnPing, MConnClose, MTreeChildren, MTreeDescribe,
+	case MConnSession, MConnCaps, MConnPing, MConnClose, MTreeChildren, MTreeDescribe, MTreeKeys,
 		MLangSplit, MLangClassify, MLangRedact, MBrowseLayout, MBrowseRequest, MEditorPlan, MExplainRequest:
 		return s.handleConn(ctx, method, raw)
 	case MSessionExecute:
@@ -233,7 +233,9 @@ func (s *server) open(ctx context.Context, raw json.RawMessage) (any, error) {
 	_, browser := c.(tile.Browser)
 	_, editor := c.(tile.Editor)
 	_, explainer := c.(tile.Explainer)
-	reply := OpenReply{Conn: s.add(sv), Facets: Facets{Tree: c.Tree() != nil, Browser: browser, Editor: editor, Explainer: explainer}}
+	tree := c.Tree()
+	_, keys := tree.(tile.KeyDescriber)
+	reply := OpenReply{Conn: s.add(sv), Facets: Facets{Tree: tree != nil, TreeKeys: keys, Browser: browser, Editor: editor, Explainer: explainer}}
 	if sv.lang != nil {
 		reply.Language = sv.lang.ID()
 	}
@@ -314,6 +316,16 @@ func (s *server) handleConn(ctx context.Context, method string, raw json.RawMess
 			return nil, errors.New("connection has no object tree")
 		}
 		return tree.Describe(ctx, req.Ref)
+	case MTreeKeys:
+		req, err := decode[RefRequest](raw)
+		if err != nil {
+			return nil, err
+		}
+		kd, ok := c.Tree().(tile.KeyDescriber)
+		if !ok {
+			return nil, errors.New("connection cannot describe keys")
+		}
+		return kd.DescribeKeys(ctx, req.Ref)
 	case MLangSplit, MLangClassify, MLangRedact:
 		req, err := decode[TextRequest](raw)
 		if err != nil {

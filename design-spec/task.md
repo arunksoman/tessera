@@ -136,7 +136,10 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [ ] Token helper passwords
 - [x] Streaming execution with `ResultReader` in text format
 - [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
-- [ ] Add databases and functions to the tree
+- [x] Add functions, procedures, and aggregates to the tree, with parameters and result types
+- [x] List `pg_catalog` and `information_schema` after user schemas
+- [x] Primary and foreign keys through `KeyDescriber`
+- [ ] Add databases to the tree
 - [x] Browse with keyset pagination, filter AST, sort, and estimated count
 - [x] Edit plan and apply with guarded updates
 - [ ] Editable detection from result metadata
@@ -155,7 +158,9 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [x] Refuse `mysql_clear_password` without TLS, and keep `allowAllFiles=false`
 - [x] Streaming execution with `sql.RawBytes`
 - [x] Object tree: schema, table, view, plus columns and indexes through `Describe`
-- [ ] Add routines to the tree
+- [x] Add routines to the tree, with parameters and result types
+- [x] List system schemas after user schemas
+- [x] Primary and foreign keys through `KeyDescriber`
 - [x] Browse with keyset pagination, filter AST, sort, and estimated count
 - [x] Edit plan and apply with guarded updates and `clientFoundRows=true`
 - [x] Explain as text and JSON
@@ -193,6 +198,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [ ] Single admin account with Argon2id and secure cookies
 - [x] Build connection settings field by field, with no raw connection strings
 - [x] API: connections, tree, exec, pages, cancel, plan, apply
+- [x] API: keys
 - [ ] API: describe and complete
 - [ ] One SSE event stream per browser tab, handling the HTTP/1.1 connection limit (exec streams NDJSON per request for now)
 - [x] Embed the frontend with `go:embed`, with a committed placeholder so builds work
@@ -219,6 +225,9 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Browse: pagination, sort, filter
 - [ ] Browse: column show and hide
 - [x] Inline edit with pending state, preview, apply, and rollback
+- [x] Column types and primary and foreign key marks in grid headers
+- [x] Context menus on grid cells, column headers, and tree nodes, also from the keyboard
+- [x] Routines in the tree, with parameter types
 - [x] Connection form rendered from `Form`
 - [x] Empty, error, and loading states, with row progress and a cancel button
 - [x] Render all database values as text only
@@ -236,7 +245,8 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 
 ### Data
 
-- [ ] Foreign-key jump
+- [x] Foreign-key jump in the web app
+- [ ] Foreign-key jump in the TUI
 - [ ] Form view for single records
 - [ ] Insert, duplicate, and bulk delete rows
 - [ ] Visual filter builder plus raw expression

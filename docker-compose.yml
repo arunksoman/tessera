@@ -61,6 +61,8 @@ services:
 
   mysql:
     image: mysql:8.4
+    # Binary logging is on, so the test user needs this to create the routines the tests use.
+    command: ["--log-bin-trust-function-creators=1"]
     environment: *mysql-env
     ports: ["127.0.0.1:53384:3306"]
     healthcheck: *mysql-health
@@ -86,6 +88,8 @@ services:
   mysql-oldest:
     profiles: [matrix]
     image: mysql:8.0
+    # Binary logging is on, so the test user needs this to create the routines the tests use.
+    command: ["--log-bin-trust-function-creators=1"]
     environment: *mysql-env
     ports: ["127.0.0.1:53380:3306"]
     healthcheck: *mysql-health

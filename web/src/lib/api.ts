@@ -40,7 +40,11 @@ export type SaveProfile = {
 };
 export type Saved = Profile & { connected: boolean; error?: string };
 
-export type TreeNode = { ref: Ref; kind: string; label: string; hasChildren: boolean; browsable: boolean };
+/** detail is a short note shown beside the label, such as a parameter's type. */
+export type TreeNode = { ref: Ref; kind: string; label: string; hasChildren: boolean; browsable: boolean; detail?: string };
+/** fields hold the values of targetFields in one record of target, in order. */
+export type ForeignKey = { name: string; fields: string[]; target: Ref; targetFields: string[] };
+export type Keys = { primary: string[]; foreign: ForeignKey[] };
 export type Shape = 'table' | 'document' | 'tree' | 'keyvalue' | 'scalar';
 export type Layout = { fields: Field[]; key: string[]; note?: string; estimate: number; shape: Shape };
 export type Filter = { field: string; op: string; value: Cell };
@@ -119,6 +123,7 @@ export const api = {
 	deleteProfile: (name: string) => call<void>('DELETE', `/api/profiles/${encodeURIComponent(name)}`),
 	tree: (profile: string, ref: Ref, cursor = '') =>
 		call<{ nodes: TreeNode[]; next: string }>('POST', `${conn(profile)}/tree`, { ref, cursor }),
+	keys: (profile: string, ref: Ref) => call<Keys>('POST', `${conn(profile)}/keys`, { ref }),
 	browse: (profile: string, req: BrowseRequest, signal?: AbortSignal) =>
 		call<BrowseResult>('POST', `${conn(profile)}/browse`, req, signal),
 	plan: (profile: string, ref: Ref, changes: Change[]) => call<Plan>('POST', `${conn(profile)}/plan`, { ref, changes }),

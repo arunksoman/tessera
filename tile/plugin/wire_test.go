@@ -29,6 +29,11 @@ func TestWireNames(t *testing.T) {
 		{tile.Manifest{ID: "redis", Name: "Redis", Version: "0.1.0", MinTess: "0.4.0"},
 			`{"id":"redis","name":"Redis","api_version":0,"style":{},"conn_form":{"fields":null},"version":"0.1.0","min_tess":"0.4.0"}`},
 		{tile.ObjectRef{}.Child("db", "0"), `{"path":[{"kind":"db","name":"0"}]}`},
+		{tile.Node{Ref: tile.ObjectRef{}.Child("parameter", "p"), Kind: "parameter", Label: "p", Detail: "integer"},
+			`{"ref":{"path":[{"kind":"parameter","name":"p"}]},"kind":"parameter","label":"p","detail":"integer"}`},
+		{tile.Keys{Primary: []string{"id"}, Foreign: []tile.ForeignKey{{Name: "fk", Fields: []string{"a"},
+			Target: tile.ObjectRef{}.Child("table", "t"), TargetFields: []string{"id"}}}},
+			`{"primary":["id"],"foreign":[{"name":"fk","fields":["a"],"target":{"path":[{"kind":"table","name":"t"}]},"target_fields":["id"]}]}`},
 	}
 	for _, c := range cases {
 		b, err := json.Marshal(c.v)

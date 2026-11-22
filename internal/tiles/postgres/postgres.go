@@ -350,13 +350,49 @@ func (c *conn) query(ctx context.Context, text string, args ...string) ([][][]by
 type tree struct{ c *conn }
 
 const (
+	// System schemas come after user ones. Toast and temporary schemas stay hidden.
 	schemasSQL = `SELECT nspname FROM pg_namespace
-		WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND nspname > $1::name
-		ORDER BY nspname LIMIT $2::int`
+		WHERE nspname !~ '^pg_(toast|temp_)' AND (nspname IN ('pg_catalog', 'information_schema')) = $1::bool
+			AND nspname > $2::name
+		ORDER BY nspname LIMIT $3::int`
 	relationsSQL = `SELECT c.relname, CASE WHEN c.relkind IN ('v', 'm') THEN 'view' ELSE 'table' END
 		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 		WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND c.relname > $2::name
 		ORDER BY c.relname LIMIT $3::int`
+	// A routine's ref names its signature, which tells overloads apart.
+	signature   = `(p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')') COLLATE "C"`
+	routinesSQL = `SELECT ` + signature + `, p.proname,
+			CASE p.prokind WHEN 'p' THEN 'procedure' WHEN 'a' THEN 'aggregate' ELSE 'function' END
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND ` + signature + ` > $2::text
+		ORDER BY 1 LIMIT $3::int`
+	// One row per argument, then the result, which procedures lack.
+	routineSQL = `SELECT COALESCE(NULLIF(a.name, ''), '$' || a.ord),
+			CASE a.mode WHEN 'o' THEN 'OUT ' WHEN 'b' THEN 'INOUT ' WHEN 'v' THEN 'VARIADIC ' WHEN 't' THEN 'OUT ' ELSE '' END
+				|| format_type(a.typ, NULL),
+			'parameter', a.ord
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		CROSS JOIN LATERAL unnest(COALESCE(p.proallargtypes, p.proargtypes::oid[]), p.proargnames, p.proargmodes)
+			WITH ORDINALITY AS a(typ, name, mode, ord)
+		WHERE n.nspname = $1 AND ` + signature + ` = $2
+		UNION ALL
+		SELECT 'returns', pg_get_function_result(p.oid), 'return', 1000000
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = $1 AND ` + signature + ` = $2 AND p.prokind <> 'p'
+		ORDER BY 4`
+	// One row per column of the primary key, then of each foreign key, in key order.
+	keyColumnsSQL = `SELECT con.contype::text, con.conname, a.attname, fn.nspname, fc.relname, fa.attname
+		FROM pg_constraint con
+		JOIN pg_class c ON c.oid = con.conrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(attnum, fattnum, ord)
+		JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+		LEFT JOIN pg_class fc ON fc.oid = con.confrelid
+		LEFT JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+		LEFT JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = k.fattnum
+		WHERE con.contype IN ('p', 'f') AND n.nspname = $1 AND c.relname = $2
+		ORDER BY con.contype DESC, con.conname, k.ord`
 	columnsSQL = `SELECT a.attname, format_type(a.atttypid, a.atttypmod),
 			CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END, pg_get_expr(d.adbin, d.adrelid)
 		FROM pg_attribute a
@@ -374,41 +410,75 @@ const (
 		ORDER BY i.relname`
 )
 
+// routineKinds are the kinds of routine nodes, whose children are parameters.
+var routineKinds = map[string]bool{"function": true, "procedure": true, "aggregate": true}
+
 func (t tree) Children(ctx context.Context, parent tile.ObjectRef, p tile.Page) ([]tile.Node, string, error) {
-	limit := p.Limit
-	if limit <= 0 {
-		limit = 200
+	// stage lists nodes from one catalog query, whose bound arguments end with after and n.
+	stage := func(text string, node func(r [][]byte) tile.Node, args ...string) sqlgen.Stage {
+		return func(after string, n int) ([]tile.Node, error) {
+			rows, _, err := t.c.query(ctx, text, append(args, after, strconv.Itoa(n))...)
+			nodes := make([]tile.Node, len(rows))
+			for i, r := range rows {
+				nodes[i] = node(r)
+			}
+			return nodes, err
+		}
 	}
-	fetch := strconv.Itoa(limit + 1)
-	var rows [][][]byte
-	var err error
 	switch len(parent.Path) {
 	case 0:
-		rows, _, err = t.c.query(ctx, schemasSQL, p.Cursor, fetch)
+		schema := func(r [][]byte) tile.Node {
+			name := string(r[0])
+			return tile.Node{Ref: parent.Child("schema", name), Kind: "schema", Label: name, HasChildren: true}
+		}
+		return sqlgen.PageStages(p.Limit, p.Cursor, stage(schemasSQL, schema, "false"), stage(schemasSQL, schema, "true"))
 	case 1:
-		rows, _, err = t.c.query(ctx, relationsSQL, parent.Path[0].Name, p.Cursor, fetch)
-	default:
-		return nil, "", nil
+		relation := func(r [][]byte) tile.Node {
+			name, kind := string(r[0]), string(r[1])
+			return tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, Browsable: true}
+		}
+		routine := func(r [][]byte) tile.Node {
+			kind := string(r[2])
+			return tile.Node{Ref: parent.Child(kind, string(r[0])), Kind: kind, Label: string(r[1]), HasChildren: true}
+		}
+		schema := parent.Path[0].Name
+		return sqlgen.PageStages(p.Limit, p.Cursor, stage(relationsSQL, relation, schema), stage(routinesSQL, routine, schema))
+	case 2:
+		if !routineKinds[parent.Path[1].Kind] {
+			return nil, "", nil
+		}
+		rows, _, err := t.c.query(ctx, routineSQL, parent.Path[0].Name, parent.Path[1].Name)
+		if err != nil {
+			return nil, "", err
+		}
+		nodes := make([]tile.Node, len(rows))
+		for i, r := range rows {
+			name, kind := string(r[0]), string(r[2])
+			nodes[i] = tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, Detail: string(r[1])}
+		}
+		return sqlgen.PageSlice(nodes, p)
 	}
+	return nil, "", nil
+}
+
+// DescribeKeys reads the primary key and the foreign keys from the catalog.
+func (t tree) DescribeKeys(ctx context.Context, ref tile.ObjectRef) (tile.Keys, error) {
+	if len(ref.Path) != 2 {
+		return tile.Keys{}, fmt.Errorf("postgres: cannot describe keys of %v", ref.Path)
+	}
+	rows, _, err := t.c.query(ctx, keyColumnsSQL, ref.Path[0].Name, ref.Path[1].Name)
 	if err != nil {
-		return nil, "", err
+		return tile.Keys{}, err
 	}
-	next := ""
-	if len(rows) > limit {
-		rows = rows[:limit]
-		next = string(rows[limit-1][0])
-	}
-	nodes := make([]tile.Node, len(rows))
-	for i, r := range rows {
-		name := string(r[0])
-		if len(parent.Path) == 0 {
-			nodes[i] = tile.Node{Ref: parent.Child("schema", name), Kind: "schema", Label: name, HasChildren: true}
+	var k tile.Keys
+	for _, r := range rows {
+		if string(r[0]) == "p" {
+			k.Primary = append(k.Primary, string(r[2]))
 			continue
 		}
-		kind := string(r[1])
-		nodes[i] = tile.Node{Ref: parent.Child(kind, name), Kind: kind, Label: name, Browsable: true}
+		k.Foreign = sqlgen.AddForeign(k.Foreign, string(r[1]), string(r[2]), string(r[3]), string(r[4]), string(r[5]))
 	}
-	return nodes, next, nil
+	return k, nil
 }
 
 func (t tree) Describe(ctx context.Context, ref tile.ObjectRef) (tile.ObjectDetail, error) {
