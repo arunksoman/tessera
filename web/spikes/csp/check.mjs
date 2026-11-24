@@ -71,10 +71,10 @@ for (const name of (process.env.BROWSERS ?? 'chromium,firefox,webkit').split(','
   };
   await step('load', async () => {
     await page.goto(url);
-    await page.getByRole('button', { name: /SQL on pg/ }).waitFor({ timeout: 10000 });
+    await page.getByTitle('Open a SQL tab on pg').waitFor({ timeout: 10000 });
   });
   await step('editor', async () => {
-    await page.getByRole('button', { name: /SQL on pg/ }).click();
+    await page.getByTitle('Open a SQL tab on pg').click();
     await page.locator('.cm-content').click();
     await page.keyboard.type('SELECT id, name FROM customers ORDER BY id');
   });
@@ -88,7 +88,9 @@ for (const name of (process.env.BROWSERS ?? 'chromium,firefox,webkit').split(','
     await page.getByText('Ada', { exact: true }).waitFor({ timeout: 10000 });
   });
   await step('tree and browse', async () => {
-    await page.getByRole('button', { name: 'pg' }).first().click();
+    // Opening a SQL tab already expands the connection, and a second click would collapse it.
+    const conn = page.locator('button.name', { hasText: 'pg' });
+    if ((await conn.getAttribute('aria-expanded')) !== 'true') await conn.click();
     const label = page.locator('button.label', { hasText: 'customers' }).first();
     for (let i = 0; i < 4 && !(await label.isVisible()); i++) {
       const twisty = page.getByRole('button', { name: 'Expand' }).first();
