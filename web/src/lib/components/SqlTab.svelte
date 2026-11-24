@@ -173,14 +173,17 @@
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
-	function openExport(e: MouseEvent) {
-		const r = current;
-		if (!r?.fields) return;
+	/** Opens the export menu for one result, under its button or at the pointer. */
+	function openExport(r: Result | undefined, e: MouseEvent) {
+		if (!r?.fields || running) return;
+		e.preventDefault();
 		const f = r.fields;
 		const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		// A context-menu key press has no pointer position, so it opens under the tab.
+		const atPointer = e.type === 'contextmenu' && (e.clientX || e.clientY);
 		exportMenu = {
-			x: box.left,
-			y: box.bottom + 2,
+			x: atPointer ? e.clientX : box.left,
+			y: atPointer ? e.clientY : box.bottom + 2,
 			items: [
 				{ label: 'CSV', icon: 'download', hint: 'formulas neutralized', action: () => download(r, 'csv', 'text/csv', resultCSV(f, rowsOf(r), true)) },
 				{ label: 'JSON', icon: 'download', action: () => download(r, 'json', 'application/json', resultJSON(f, rowsOf(r))) },
@@ -267,9 +270,6 @@
 		<span class="spacer"></span>
 		{#if inTx}<span class="badge staging" title="A transaction is open in this tab">transaction open</span>{/if}
 		{#if running || results.length}<span class="muted">{(elapsed / 1000).toFixed(2)} s</span>{/if}
-		<button class="btn" disabled={running || !current?.fields} onclick={openExport} title="Download the rows shown">
-			<Icon name="download" size={14} /> Export
-		</button>
 	</div>
 	<div class="editor-pane">
 		<Editor bind:this={editor} bind:value={tab.sql} {dialect} onrun={(t) => run(t)} oncancel={cancel} />
@@ -295,12 +295,34 @@
 				</dl>
 			{/if}
 		{:else}
-			<div class="rtabs" role="tablist">
-				{#each results as r, i (r.stmt)}
-					<button role="tab" class="rtab" class:on={i === shown} class:err={!!r.error} aria-selected={i === shown} onclick={() => (shown = i)}>
-						{i + 1}. {summary(r)}
+			<div class="rbar">
+				<div class="rtabs" role="tablist">
+					{#each results as r, i (r.stmt)}
+						<button
+							role="tab"
+							class="rtab"
+							class:on={i === shown}
+							class:err={!!r.error}
+							aria-selected={i === shown}
+							title={r.fields ? 'Right-click to export' : undefined}
+							onclick={() => (shown = i)}
+							oncontextmenu={(e) => openExport(r, e)}
+						>
+							{i + 1}. {summary(r)}
+						</button>
+					{/each}
+				</div>
+				{#if current?.fields}
+					<button
+						class="btn ghost export"
+						disabled={running}
+						onclick={(e) => openExport(current, e)}
+						aria-label="Export result {shown + 1}"
+						title="Download result {shown + 1} as CSV, JSON, or JSON Lines"
+					>
+						<Icon name="download" size={14} /> Export{#if results.length > 1}&nbsp;{shown + 1}{/if}
 					</button>
-				{/each}
+				{/if}
 			</div>
 			{#if current}
 				{#if current.error}
@@ -438,12 +460,24 @@
 		min-height: 0;
 		background: var(--surface);
 	}
+	.rbar {
+		display: flex;
+		align-items: flex-end;
+		gap: 6px;
+		border-bottom: 1px solid var(--border);
+		flex: none;
+	}
 	.rtabs {
 		display: flex;
 		gap: 2px;
 		padding: 4px 6px 0;
-		border-bottom: 1px solid var(--border);
 		overflow-x: auto;
+		flex: 1;
+		min-width: 0;
+	}
+	.export {
+		height: 24px;
+		margin: 0 6px 3px 0;
 		flex: none;
 	}
 	.rtab {

@@ -41,6 +41,8 @@ async function check(page, name, db, step) {
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Delete');
     await page.keyboard.type(sql);
+    // Typing can open completion, whose popup would cover the editor for the next click.
+    await page.keyboard.press('Escape');
   };
   // Runs the script, confirming the safety prompt if one comes, and waits for its results.
   const run = async (sql, keys = 'Control+Enter') => {
@@ -58,8 +60,9 @@ async function check(page, name, db, step) {
     if (await err.count()) throw new Error(`"${sql}" failed: ${await err.first().innerText()}`);
   };
   const results = () => page.locator('.grid-wrap').innerText();
-  const download = async (label) => {
-    await page.getByRole('button', { name: 'Export' }).click();
+  // Opens the export menu from the given control, the Export button by default, and saves label.
+  const download = async (label, from = page.getByRole('button', { name: /^Export result/ }), button = 'left') => {
+    await from.click({ button });
     const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: label }).click()]);
     return readFileSync(await file.path(), 'utf8');
   };
@@ -106,6 +109,16 @@ async function check(page, name, db, step) {
     if (!json.includes('"big":12345678901234567890') || JSON.parse(json)[0].z !== null) throw new Error(`JSON: ${json}`);
     const lines = (await download('JSON Lines')).trim().split('\n');
     if (lines.length !== 1) throw new Error(`JSON Lines: ${lines}`);
+  });
+  await step('export one of several results', async () => {
+    await run("SELECT 'first' AS a; SELECT 'second' AS b");
+    await page.locator('.rtab').nth(1).click();
+    const csv = await download('CSV', page.getByRole('button', { name: 'Export result 2' }));
+    if (csv !== 'b\r\nsecond\r\n') throw new Error(`export button took the wrong result: ${JSON.stringify(csv)}`);
+    // Right-clicking a tab exports that result without switching to it.
+    const csv1 = await download('CSV', page.locator('.rtab').first(), 'right');
+    if (csv1 !== 'a\r\nfirst\r\n') throw new Error(`tab menu took the wrong result: ${JSON.stringify(csv1)}`);
+    if ((await page.locator('.rtab.on').innerText()).trim() !== '2. 1 rows') throw new Error('right-click switched tabs');
   });
   await step('manual commit: rollback', async () => {
     await page.getByRole('radio', { name: 'Manual commit' }).click();
