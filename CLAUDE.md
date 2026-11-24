@@ -49,6 +49,8 @@ Check grid themes with `PLAYWRIGHT_DIR=<dir> node web/spikes/grid/theme.mjs`.
 
 Check the built app under the real CSP in three browsers with `PLAYWRIGHT_DIR=<dir> node web/spikes/csp/check.mjs`. It needs `make` and the compose PostgreSQL. `cd web && npm run lint` bans `{@html}` and DOM HTML sinks.
 
+Check the SQL tab end to end in three browsers against PostgreSQL, MySQL, and MariaDB with `PLAYWRIGHT_DIR=<dir> node web/spikes/sqltab/check.mjs`; it covers format, run current statement, result export, and manual commit. It needs `make` and the compose servers. `BROWSERS` and `DBS` limit the runs.
+
 A release comes from pushing an annotated tag like `v0.1.0` on a commit in `main`. The tag message becomes the release notes, and `scripts/release-build.sh` sets the version through `-X main.version`.
 
 Compose ports and logins are in [README.md](README.md). Each server has `tessera_test`, the tiny fixture tests depend on, and `sakila`, a vendored sample database for manual use; after changing fixtures run `docker compose down -v` so init scripts run again. Alpine images are the default, except real MySQL, which has no Alpine image. MariaDB is built from `docker/mariadb-alpine`, because no official Alpine image exists either.

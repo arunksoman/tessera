@@ -26,6 +26,16 @@ jobs:
     needs: check
     uses: ./.github/workflows/ci.yml
 
+  image:
+    needs: [check, ci]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/docker.yml
+
   release:
     needs: [check, ci]
     runs-on: ubuntu-latest

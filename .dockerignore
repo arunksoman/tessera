@@ -1,0 +1,15 @@
+# Allowlist: only what the image build reads.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!tile/
+!web/
+!LICENSE
+web/node_modules/
+web/build/app/
+web/.svelte-kit/
+web/spikes/
+**/*_test.go
+**/testdata/

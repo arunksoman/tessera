@@ -3,7 +3,8 @@ import { browseTitle } from './keys.ts';
 import { parseRecent, renameRecent, touchRecent, type Recent } from './connections.ts';
 
 export type Tab =
-	| { id: string; kind: 'sql'; profile: string; title: string; sql: string }
+	// manual opens a transaction before a run when none is open, so nothing commits by itself.
+	| { id: string; kind: 'sql'; profile: string; title: string; sql: string; manual?: boolean }
 	// filter is what the tab opened with, such as the key of a referenced row.
 	| { id: string; kind: 'browse'; profile: string; title: string; ref: Ref; filter?: Filter[] }
 	| { id: string; kind: 'structure'; profile: string; title: string; ref: Ref };

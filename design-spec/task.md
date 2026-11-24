@@ -221,6 +221,8 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Inline SVG icons (Lucide paths and Simple Icons database logos, licences in `web/src/lib/icons`) instead of text glyphs
 - [x] CodeMirror editor with tabs and SQL keyword completion
 - [ ] Engine-driven autocomplete and query history in the editor
+- [x] SQL tab: auto and manual commit with commit and rollback, format SQL, run the statement at the cursor, and a keyboard shortcut list
+- [x] Export a query result shown in the SQL tab as CSV, JSON, or JSON Lines
 - [x] Virtualized grid with keyboard navigation, from the Phase 0 prototype
 - [ ] Grid decoding in a Web Worker
 - [x] Browse: pagination, sort, filter
