@@ -86,6 +86,26 @@ A `tess` built without it serves a page that says so.
 
 It listens on loopback by default. Any other address needs TLS (`--tls-cert` and `--tls-key`) or `--behind-proxy` for a TLS-terminating proxy, and the names browsers use must be passed with `--allow-host`. Requests with any other `Host` are refused, which blocks DNS rebinding.
 
+#### Container image
+
+`ghcr.io/arunksoman/tessera` runs `tess serve` on a distroless base as a non-root user, for amd64 and arm64. `:edge` follows `main`, and release tags publish their version and `:latest`. Each image is scanned with Trivy before it is published, and carries an SBOM and a build provenance attestation (`gh attestation verify oci://ghcr.io/arunksoman/tessera:latest -R arunksoman/tessera`).
+
+Inside a container `tess serve` listens on `0.0.0.0:8080`, so it still needs TLS or `--behind-proxy`, and an `--allow-host`. With no OS keychain, it needs `TESSERA_PASSPHRASE` or `TESSERA_MASTER_KEY_FILE`. Profiles and secrets live in the `/data` volume:
+
+```sh
+docker volume create tess-data
+printf '%s\n' "$DB_PASSWORD" | docker run --rm -i -v tess-data:/data -e TESSERA_PASSPHRASE \
+  ghcr.io/arunksoman/tessera profile add app --tile postgres --host db.example.com --user app --database app --password-stdin
+docker run -d --read-only --cap-drop ALL --security-opt no-new-privileges -p 127.0.0.1:8443:8443 \
+  -v tess-data:/data -v "$PWD/tls:/tls:ro" -e TESSERA_PASSPHRASE \
+  ghcr.io/arunksoman/tessera serve --addr 0.0.0.0:8443 --no-browser --tls-cert /tls/cert.pem --tls-key /tls/key.pem --allow-host localhost
+docker logs <container>    # prints the one-time sign-in link
+```
+
+The sign-in link is in the container log, so treat the log as a secret until the link is used. There are no user accounts yet: whoever opens the link first gets the session.
+
+Build it locally with `docker buildx build -t tess .`.
+
 ### Safety
 
 `DROP`, `TRUNCATE`, and `DELETE` or `UPDATE` without `WHERE` need confirmation. Connections created with `--env production` also confirm every write. A script is checked before its first statement runs. In scripts, `--yes` answers confirmations. MySQL scripts may use `DELIMITER` lines, as in the `mysql` client, for procedure and trigger bodies.
