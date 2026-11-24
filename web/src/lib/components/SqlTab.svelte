@@ -475,10 +475,18 @@
 		flex: 1;
 		min-width: 0;
 	}
+	/* An accent tint, quieter than Run's solid fill; text stays at AA contrast in both themes. */
 	.export {
 		height: 24px;
 		margin: 0 6px 3px 0;
 		flex: none;
+		color: var(--lapis);
+		background: color-mix(in srgb, var(--lapis) 12%, transparent);
+		border-color: color-mix(in srgb, var(--lapis) 35%, transparent);
+		font-weight: 600;
+	}
+	.export:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--lapis) 20%, transparent);
 	}
 	.rtab {
 		border: 1px solid transparent;
