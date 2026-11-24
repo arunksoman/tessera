@@ -657,6 +657,7 @@ XLSX export is write-only, around 200 lines on `archive/zip` and `encoding/xml`,
 |---|---|
 | `svelte` | UI |
 | `@codemirror/{state,view,commands,language,autocomplete,lint,search,lang-sql,lang-json}` and `@lezer/*` | Editor |
+| `sql-formatter` | Format SQL in the editor, PostgreSQL and MySQL dialects; a correct formatter needs a real tokenizer, so not hand-written. Loaded on first use |
 
 Build-time only: `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sveltejs/vite-plugin-svelte` (Kit's required peer), `vite`, `typescript`, `svelte-check` (type checks `.svelte` files), `playwright`, `@axe-core/playwright`, `vitest`.
 
