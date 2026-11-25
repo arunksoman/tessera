@@ -256,6 +256,7 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [x] Structure: add, rename, and drop columns; add and drop indexes and triggers; create script; refuse changes that need a table rebuild
 - [x] Sakila port for SQLite, loaded by a test
 - [x] SQL tab browser check covers SQLite
+- [x] File picker for file fields on a local `tess serve`, which can also name a new database to create on connect
 - [ ] Table rebuild for column type, nullability, default, and key changes
 - [ ] Remote libSQL (Turso) over HTTP
 - [ ] Limit which database files `tess serve` opens when it is not on loopback

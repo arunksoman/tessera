@@ -40,7 +40,7 @@
 	<header>
 		<h1>Welcome to Tessera</h1>
 		{#if loaded && app.profiles.length === 0}
-			<p class="muted">Add a PostgreSQL, MySQL, or MariaDB connection to start browsing tables and running SQL.</p>
+			<p class="muted">Add a PostgreSQL, MySQL, MariaDB, or SQLite connection to start browsing tables and running SQL.</p>
 		{:else}
 			<p class="muted">Open a saved connection, or add a new one.</p>
 		{/if}

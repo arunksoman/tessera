@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { api, ApiError, type FormField, type Profile, type Saved } from '#lib/api.ts';
+	import { api, ApiError, type Files, type FormField, type Profile, type Saved } from '#lib/api.ts';
 	import { colors } from '#lib/connections.ts';
 	import { app } from '#lib/state.svelte.ts';
 	import { untrack } from 'svelte';
 	import Dialog from './Dialog.svelte';
+	import FilePicker from './FilePicker.svelte';
 	import Icon from './Icon.svelte';
 	import TileMark from './TileMark.svelte';
 
@@ -34,7 +35,15 @@
 	// a collapsed section, so the common fields come first. A required file, such as a SQLite
 	// database, stays in view.
 	const advanced = (f: FormField) => f.type === 'enum' || (f.type === 'file' && !f.required);
-	const basic = $derived(nextToHost((tile?.form ?? []).filter((f) => !advanced(f))));
+	// A required file beside a bool named create is a file the tile can make, as SQLite's
+	// database is. The picker and the status line under the path set create, so the bool
+	// itself is not shown.
+	const createField = $derived(tile?.form.find((f) => f.type === 'bool' && f.name === 'create'));
+	const creatable = (f: FormField) => f.type === 'file' && !!f.required && !!createField;
+	const newFile = $derived(createField ? values[createField.name] === 'true' : false);
+	const basic = $derived(
+		nextToHost((tile?.form ?? []).filter((f) => !advanced(f) && !(f === createField && tile?.form.some(creatable))))
+	);
 	const extra = $derived((tile?.form ?? []).filter(advanced));
 	const extraTitle = $derived(extra.every((f) => /ssl|tls/i.test(f.name)) ? 'TLS and certificates' : 'Advanced');
 	const extraSummary = $derived(
@@ -67,6 +76,54 @@
 		values = next;
 		secrets = {};
 	});
+
+	// Files live on the machine running tess serve, which only a local server shows.
+	let filesOK = $state(true);
+	let picking = $state<FormField | null>(null);
+	let status = $state<Files | null>(null);
+	const pathField = $derived(tile?.form.find(creatable));
+
+	function setCreate(on: boolean) {
+		if (createField) values[createField.name] = on ? 'true' : '';
+	}
+
+	// Says what is at the path as it is typed, after a short pause.
+	$effect(() => {
+		const p = pathField ? (values[pathField.name] ?? '').trim() : '';
+		status = null;
+		if (!p || !filesOK) return;
+		let live = true;
+		const timer = setTimeout(async () => {
+			try {
+				const res = await api.files(p);
+				if (live) status = res;
+			} catch (e) {
+				if (e instanceof ApiError && e.status === 403) filesOK = false;
+			}
+		}, 250);
+		return () => {
+			live = false;
+			clearTimeout(timer);
+		};
+	});
+
+	function picked(path: string, isNew: boolean) {
+		const f = picking;
+		picking = null;
+		if (!f) return;
+		values[f.name] = path;
+		if (creatable(f)) setCreate(isNew);
+	}
+
+	async function browse(f: FormField) {
+		try {
+			await api.files('');
+			picking = f;
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 403) filesOK = false;
+			app.notify(e instanceof ApiError ? e.message : String(e), 'error');
+		}
+	}
 
 	function pick(id: string) {
 		tileID = id;
@@ -112,6 +169,10 @@
 
 {#snippet field(f: FormField)}
 	<div class="field {span[f.name] ?? 'full'}">
+		{#if f.type === 'bool'}
+			<label class="check"><input id="f-{f.name}" type="checkbox" checked={values[f.name] === 'true'}
+				onchange={(e) => (values[f.name] = e.currentTarget.checked ? 'true' : 'false')} /> {f.label}</label>
+		{:else}
 		<label for="f-{f.name}">{f.label}{#if f.required}<span class="req" aria-hidden="true">*</span>{/if}</label>
 		{#if f.type === 'secret'}
 			<div class="secret">
@@ -125,13 +186,37 @@
 				{#if !f.required}<option value="">(default)</option>{/if}
 				{#each f.options ?? [] as o (o)}<option value={o}>{o}</option>{/each}
 			</select>
-		{:else if f.type === 'bool'}
-			<input id="f-{f.name}" type="checkbox" checked={values[f.name] === 'true'}
-				onchange={(e) => (values[f.name] = e.currentTarget.checked ? 'true' : 'false')} />
+		{:else if f.type === 'file'}
+			<div class="path">
+				<input id="f-{f.name}" class="input" bind:value={values[f.name]} required={f.required} autocomplete="off"
+					spellcheck="false" placeholder={creatable(f) ? 'Browse, or type a path to a new or existing file' : 'Path on this machine'} />
+				{#if filesOK}
+					<button type="button" class="btn" onclick={() => browse(f)}><Icon name="folderOpen" /> Browse…</button>
+				{/if}
+			</div>
+			{#if creatable(f) && status}
+				<p class="file-status" aria-live="polite">
+					{#if status.kind === 'file'}
+						<span class="ok"><Icon name="check" size={14} /> Existing file</span>
+					{:else if status.kind === 'dir'}
+						<span class="bad">That is a folder. Browse into it and pick a file.</span>
+					{:else if !status.parentExists}
+						<span class="bad">The folder {status.parent} does not exist.</span>
+					{:else if newFile}
+						<span class="new"><Icon name="filePlus" size={14} /> New file: tess creates it when you connect.</span>
+						<button type="button" class="linkish" onclick={() => setCreate(false)}>Don't create</button>
+					{:else}
+						<span class="warn-text">No file here yet.</span>
+						<button type="button" class="linkish" onclick={() => setCreate(true)}>Create it on connect</button>
+					{/if}
+					{#if status.path !== (values[f.name] ?? '').trim()}<span class="resolved" title={status.path}>{status.path}</span>{/if}
+				</p>
+			{/if}
 		{:else}
 			<input id="f-{f.name}" class="input" bind:value={values[f.name]} required={f.required}
 				inputmode={f.type === 'int' ? 'numeric' : undefined} pattern={f.type === 'int' ? '[0-9]*' : undefined}
 				placeholder={f.type === 'file' ? 'Path on this machine' : ''} autocomplete="off" />
+		{/if}
 		{/if}
 	</div>
 {/snippet}
@@ -211,6 +296,12 @@
 			<button class="btn primary" type="submit" form="conn-form" disabled={busy}>{busy ? 'Connecting…' : 'Save and connect'}</button>
 		{/snippet}
 	</Dialog>
+{/if}
+
+{#if picking}
+	<FilePicker title={creatable(picking) ? 'Choose or create a database file' : 'Choose ' + picking.label.toLowerCase()}
+		start={values[picking.name] ?? ''} allowNew={creatable(picking)} databases={creatable(picking)}
+		onpick={picked} onclose={() => (picking = null)} />
 {/if}
 
 <style>
@@ -376,6 +467,60 @@
 		gap: 6px;
 		color: var(--text);
 		font-size: 13px;
+	}
+	.path {
+		display: flex;
+		gap: 6px;
+	}
+	.path .input {
+		flex: 1;
+		min-width: 0;
+	}
+	.path .btn {
+		gap: 6px;
+		white-space: nowrap;
+	}
+	.file-status {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 10px;
+		margin: 2px 0 0;
+		font-size: 12px;
+		color: var(--muted);
+	}
+	.file-status span {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.file-status .ok {
+		color: var(--success);
+	}
+	.file-status .new {
+		color: var(--verdigris);
+	}
+	.file-status .warn-text {
+		color: var(--warning);
+	}
+	.file-status .bad {
+		color: var(--danger);
+	}
+	.resolved {
+		flex-basis: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-family: var(--font-mono);
+	}
+	.linkish {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--lapis);
+		cursor: pointer;
+		font: inherit;
+		text-decoration: underline;
 	}
 	.req {
 		color: var(--danger);
