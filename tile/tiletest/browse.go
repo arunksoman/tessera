@@ -321,9 +321,12 @@ func testExplain(t *testing.T, h Harness) {
 	if res := mustCollect(t, s, e.ExplainRequest(stmt, tile.ExplainText).Text); len(res.rows) == 0 {
 		t.Fatal("no text plan")
 	}
-	res := mustCollect(t, s, e.ExplainRequest(stmt, tile.ExplainJSON).Text)
-	if len(res.rows) != 1 || !json.Valid(res.rows[0][0].Raw) {
-		t.Fatalf("plan is not JSON: %+v", res.rows)
+	// An empty request means the store has no JSON plans.
+	if req := e.ExplainRequest(stmt, tile.ExplainJSON); req.Text != "" {
+		res := mustCollect(t, s, req.Text)
+		if len(res.rows) != 1 || !json.Valid(res.rows[0][0].Raw) {
+			t.Fatalf("plan is not JSON: %+v", res.rows)
+		}
 	}
 	// Planning a write must not run it, even on a writable session.
 	rw := session(t, c, tile.SessionOptions{})

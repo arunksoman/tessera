@@ -189,7 +189,11 @@ func (c *Conn) Explain(ctx context.Context, stmt string, format tile.ExplainForm
 	if spans := c.conn.Language().Split(stmt); len(spans) != 1 {
 		return fmt.Errorf("explain takes one statement, got %d", len(spans))
 	}
-	return c.readOnly(ctx, e.ExplainRequest(stmt, format), sink)
+	req := e.ExplainRequest(stmt, format)
+	if req.Text == "" {
+		return ErrUnsupported
+	}
+	return c.readOnly(ctx, req, sink)
 }
 
 // Pending is a plan awaiting apply. Its hash proves the text previewed is the text run.

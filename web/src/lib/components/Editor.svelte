@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-	import { MySQL, PostgreSQL, sql } from '@codemirror/lang-sql';
+	import { MySQL, PostgreSQL, SQLite, sql } from '@codemirror/lang-sql';
 	import { bracketMatching, ensureSyntaxTree, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 	import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 	import { EditorState, Prec } from '@codemirror/state';
@@ -84,7 +84,7 @@
 			const f = await import('sql-formatter');
 			// Keyword case is kept: a MySQL table named like a keyword is case-sensitive on Linux.
 			const out = f.formatDialect(v.state.sliceDoc(from, to), {
-				dialect: dialect === 'mysql' ? f.mysql : f.postgresql,
+				dialect: dialect === 'mysql' ? f.mysql : dialect === 'sqlite' ? f.sqlite : f.postgresql,
 				keywordCase: 'preserve'
 			});
 			v.dispatch({ changes: { from, to, insert: out }, selection: { anchor: from, head: from + out.length } });
@@ -119,7 +119,7 @@
 					highlightActiveLine(),
 					highlightSelectionMatches(),
 					syntaxHighlighting(highlight),
-					sql({ dialect: dialect === 'mysql' ? MySQL : PostgreSQL, upperCaseKeywords: true }),
+					sql({ dialect: dialect === 'mysql' ? MySQL : dialect === 'sqlite' ? SQLite : PostgreSQL, upperCaseKeywords: true }),
 					placeholder('Write SQL, then press Ctrl+Enter to run. Select text to run only that part.'),
 					Prec.highest(
 						keymap.of([

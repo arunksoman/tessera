@@ -17,6 +17,7 @@ type Family uint8
 const (
 	FamilyPostgres Family = iota
 	FamilyMySQL
+	FamilySQLite
 )
 
 // str renders a string literal for a statement that runs.
@@ -28,7 +29,7 @@ func (d Dialect) str(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
-// PlanStructure turns structure changes into statements. PostgreSQL runs them in one
+// PlanStructure turns structure changes into statements. PostgreSQL and SQLite run them in one
 // transaction; MySQL commits each statement on its own, so the plan is per item there.
 func (d Dialect) PlanStructure(ref tile.ObjectRef, changes []tile.StructureChange) (tile.Plan, error) {
 	if len(ref.Path) == 0 {
@@ -38,7 +39,7 @@ func (d Dialect) PlanStructure(ref tile.ObjectRef, changes []tile.StructureChang
 		return tile.Plan{}, errors.New("no changes")
 	}
 	plan := tile.Plan{Atomicity: tile.AtomicPerItem}
-	if d.Family == FamilyPostgres {
+	if d.Family != FamilyMySQL {
 		plan = tile.Plan{
 			Begin:    tile.Request{Text: d.Begin},
 			Commit:   tile.Request{Text: "COMMIT"},
@@ -62,6 +63,11 @@ func (d Dialect) change(ref tile.ObjectRef, c tile.StructureChange) ([]string, e
 	kind := ref.Path[len(ref.Path)-1].Kind
 	alter := "ALTER TABLE " + obj + " "
 	one := func(s string) ([]string, error) { return []string{s}, nil }
+	if d.Family == FamilySQLite {
+		if out, err, ok := d.sqliteChange(ref, c); ok {
+			return out, err
+		}
+	}
 	switch c.Op {
 	case tile.OpRename:
 		if c.Name == "" {
@@ -519,8 +525,10 @@ func (d Dialect) fragment(what, s string, semicolons bool) error {
 			next = s[i+1]
 		}
 		switch {
-		case ch == '\'' || ch == '"' || (ch == '`' && d.Family == FamilyMySQL):
+		case ch == '\'' || ch == '"' || (ch == '`' && d.Family != FamilyPostgres):
 			quote = ch
+		case ch == '[' && d.Family == FamilySQLite:
+			quote = ']'
 		case ch == '(':
 			depth++
 		case ch == ')':
@@ -652,7 +660,7 @@ func (d Dialect) value(v tile.Value) string {
 			return "FALSE"
 		}
 	case tile.KindBytes:
-		if d.Family == FamilyMySQL {
+		if d.Family != FamilyPostgres {
 			return "X'" + hex.EncodeToString(v.Raw) + "'"
 		}
 		return `'\x` + hex.EncodeToString(v.Raw) + "'"
@@ -670,3 +678,117 @@ func (d Dialect) ColumnDef(f tile.FieldDef) (string, error) {
 
 // Literal renders a string literal for a statement that runs.
 func (d Dialect) Literal(s string) string { return d.str(s) }
+
+// sqliteChange plans the changes SQLite makes differently, and refuses those that need the table
+// rebuilt, which SQLite's ALTER TABLE cannot do in place. ok is false for changes planned as for
+// PostgreSQL.
+func (d Dialect) sqliteChange(ref tile.ObjectRef, c tile.StructureChange) (out []string, err error, ok bool) {
+	obj := d.object(ref)
+	table := d.Quote(ref.Path[len(ref.Path)-1].Name) // SQLite names the schema on the index or trigger, not on its table
+	rebuild := func(what string) ([]string, error, bool) {
+		return nil, fmt.Errorf("SQLite cannot %s without rebuilding the table; use SQL", what), true
+	}
+	switch c.Op {
+	case tile.OpTruncate:
+		if kind := ref.Path[len(ref.Path)-1].Kind; kind != "table" {
+			return nil, fmt.Errorf("cannot truncate a %s", kind), true
+		}
+		return []string{"DELETE FROM " + obj}, nil, true
+	case tile.OpFieldAdd:
+		if c.Field != nil && c.Field.Comment != "" {
+			return nil, errors.New("SQLite keeps no comments"), true
+		}
+	case tile.OpFieldAlter:
+		if c.Field == nil || c.From == nil {
+			return nil, errors.New("a field change needs the field as it was and as it becomes"), true
+		}
+		renamed := *c.From
+		renamed.Name = c.Field.Name
+		if renamed != *c.Field {
+			return rebuild("change a field's type, default, nullability, or comment")
+		}
+		if c.From.Name == c.Field.Name {
+			return nil, nil, true
+		}
+		if err := needName("field", c.Field.Name); err != nil {
+			return nil, err, true
+		}
+		return []string{"ALTER TABLE " + obj + " RENAME COLUMN " + d.Quote(c.From.Name) + " TO " + d.Quote(c.Field.Name)}, nil, true
+	case tile.OpIndexAdd:
+		if c.Index == nil {
+			return nil, errors.New("no index"), true
+		}
+		ix := *c.Index
+		if ix.Primary || ix.Constraint {
+			return rebuild("add a key")
+		}
+		if ix.Method != "" {
+			return nil, fmt.Errorf("SQLite has no index method %q", ix.Method), true
+		}
+		if err := needName("index", ix.Name); err != nil {
+			return nil, err, true
+		}
+		cols, err := d.columns(ix.Fields)
+		if err != nil {
+			return nil, err, true
+		}
+		s := "CREATE "
+		if ix.Unique {
+			s += "UNIQUE "
+		}
+		return []string{s + "INDEX " + d.sibling(ref, ix.Name) + " ON " + table + " " + cols}, nil, true
+	case tile.OpIndexDrop:
+		if c.Index != nil && (c.Index.Primary || c.Index.Constraint) {
+			return rebuild("drop a key")
+		}
+	case tile.OpRelationAdd, tile.OpRelationDrop:
+		return rebuild("add or drop a relation")
+	case tile.OpTriggerAdd:
+		if c.Trigger == nil {
+			return nil, errors.New("no trigger"), true
+		}
+		return d.sqliteTrigger(ref, table, *c.Trigger)
+	case tile.OpTriggerDrop:
+		if err := needName("trigger", c.Name); err != nil {
+			return nil, err, true
+		}
+		return []string{"DROP TRIGGER " + d.sibling(ref, c.Name)}, nil, true
+	}
+	return nil, nil, false
+}
+
+func (d Dialect) sqliteTrigger(ref tile.ObjectRef, table string, tr tile.TriggerDef) ([]string, error, bool) {
+	if err := needName("trigger", tr.Name); err != nil {
+		return nil, err, true
+	}
+	timing := strings.ToUpper(strings.Join(strings.Fields(tr.Timing), " "))
+	if !slices.Contains([]string{"BEFORE", "AFTER", "INSTEAD OF"}, timing) {
+		return nil, fmt.Errorf("unknown timing %q", tr.Timing), true
+	}
+	if len(tr.Events) != 1 {
+		return nil, errors.New("a SQLite trigger fires on one of INSERT, UPDATE, or DELETE"), true
+	}
+	event := strings.ToUpper(strings.TrimSpace(tr.Events[0]))
+	if !slices.Contains([]string{"INSERT", "UPDATE", "DELETE"}, event) {
+		return nil, errors.New("a SQLite trigger fires on one of INSERT, UPDATE, or DELETE"), true
+	}
+	if f := strings.ToUpper(strings.TrimSpace(tr.ForEach)); f != "" && f != "ROW" {
+		return nil, errors.New("SQLite triggers run for each row"), true
+	}
+	// The body is one or more statements, each ending in a semicolon.
+	action := strings.TrimRight(strings.TrimSpace(tr.Action), ";")
+	if action == "" {
+		return nil, errors.New("no action"), true
+	}
+	if err := d.fragment("action", action, true); err != nil {
+		return nil, err, true
+	}
+	s := fmt.Sprintf("CREATE TRIGGER %s %s %s ON %s FOR EACH ROW", d.sibling(ref, tr.Name), timing, event, table)
+	if tr.Condition != "" {
+		if err := d.fragment("condition", tr.Condition, false); err != nil {
+			return nil, err, true
+		}
+		s += " WHEN (" + tr.Condition + ")"
+	}
+	return []string{s + " BEGIN " + action + "; END"}, nil, true
+}

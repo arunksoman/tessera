@@ -4,9 +4,9 @@ Implementation checklist for [design.md](design.md). Section numbers below refer
 
 ## Scope
 
-**In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB and PostgreSQL.
+**In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB, PostgreSQL, and SQLite files.
 
-**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, SQLite tile, query sharing and charts. Redis and Elasticsearch can arrive as installable plugins without changes to `tess`.
+**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, remote libSQL (Turso), DuckDB, query sharing and charts. Redis and Elasticsearch can arrive as installable plugins without changes to `tess`.
 
 **Changes from the design:**
 
@@ -247,6 +247,18 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 **Exit:** the authors use it daily on real databases, targets hold in CI, and a public alpha is released.
 
 ## Phase 2: Full CRUD and administration
+
+### SQLite
+
+- [x] SQLite tile on `modernc.org/sqlite`, no new dependency: a file path only, created only on request, defensive mode, foreign keys on, `trusted_schema` off
+- [x] SQLite lexing: bracketed identifiers, trigger bodies with semicolons, `BEGIN IMMEDIATE` and the other lock modes
+- [x] Tree, browse, edit, load, export, and `EXPLAIN QUERY PLAN`, with the conformance suite in the unit tests, in and out of process
+- [x] Structure: add, rename, and drop columns; add and drop indexes and triggers; create script; refuse changes that need a table rebuild
+- [x] Sakila port for SQLite, loaded by a test
+- [x] SQL tab browser check covers SQLite
+- [ ] Table rebuild for column type, nullability, default, and key changes
+- [ ] Remote libSQL (Turso) over HTTP
+- [ ] Limit which database files `tess serve` opens when it is not on loopback
 
 ### Data
 

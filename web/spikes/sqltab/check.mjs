@@ -1,4 +1,4 @@
-// Drives the SQL tab end to end in real browsers against the compose databases: the shortcut
+// Drives the SQL tab end to end in real browsers against the compose databases and SQLite: the shortcut
 // list, format, run current statement, result export, and manual commit with commit and
 // rollback. Fails on any broken step or page error.
 //
@@ -15,20 +15,24 @@ const require = createRequire(path.join(process.env.PLAYWRIGHT_DIR, 'x.js'));
 const pw = require('playwright');
 const bin = process.argv[2] ?? (process.platform === 'win32' ? './tess.exe' : './tess');
 
-// txDDL says whether DDL stays inside a transaction; MySQL and MariaDB commit it at once.
-const databases = {
-  pg: { tile: 'postgres', port: '55418', tls: 'disable', txDDL: true },
-  mysql: { tile: 'mysql', port: '53384', tls: 'DISABLED', txDDL: false },
-  mariadb: { tile: 'mysql', port: '53114', tls: 'DISABLED', txDDL: false }
-};
-
 const dir = mkdtempSync(path.join(tmpdir(), 'tess-sqltab-'));
+const server = (port, tls) => ['--host', '127.0.0.1', '--port', port, '--user', 'tessera', '--database', 'tessera_test',
+  '--tls', tls, '--password-stdin'];
+
+// txDDL says whether DDL stays inside a transaction; MySQL and MariaDB commit it at once. big is
+// an integer past JavaScript's safe range that the database keeps exactly.
+const databases = {
+  pg: { tile: 'postgres', args: server('55418', 'disable'), txDDL: true },
+  mysql: { tile: 'mysql', args: server('53384', 'DISABLED'), txDDL: false },
+  mariadb: { tile: 'mysql', args: server('53114', 'DISABLED'), txDDL: false },
+  sqlite: { tile: 'sqlite', args: ['--set', `path=${path.join(dir, 'sqltab.db')}`, '--set', 'create=true'], txDDL: true,
+    big: '9223372036854775807' }
+};
 const env = { ...process.env, TESSERA_CONFIG_DIR: dir, TESSERA_PASSPHRASE: 'sqltab-check-only' };
 const dbs = (process.env.DBS ?? Object.keys(databases).join(',')).split(',');
 for (const name of dbs) {
   const db = databases[name];
-  const add = spawnSync(bin, ['profile', 'add', name, '--tile', db.tile, '--host', '127.0.0.1', '--port', db.port,
-    '--user', 'tessera', '--database', 'tessera_test', '--tls', db.tls, '--password-stdin'],
+  const add = spawnSync(bin, ['profile', 'add', name, '--tile', db.tile, ...db.args],
     { env, input: 'tessera_dev\n', encoding: 'utf8' });
   if (add.status !== 0) throw new Error(`profile add ${name}: ${add.stderr}`);
 }
@@ -102,11 +106,12 @@ async function check(page, name, db, step) {
     if ((await page.locator('.rtab').count()) !== 1) throw new Error('first statement not run alone');
   });
   await step('export', async () => {
-    await run("SELECT 12345678901234567890 AS big, '=1+1' AS f, NULL AS z");
+    const big = db.big ?? '12345678901234567890';
+    await run(`SELECT ${big} AS big, '=1+1' AS f, NULL AS z`);
     const csv = await download('CSV');
-    if (csv !== "big,f,z\r\n12345678901234567890,'=1+1,\r\n") throw new Error(`CSV: ${JSON.stringify(csv)}`);
+    if (csv !== `big,f,z\r\n${big},'=1+1,\r\n`) throw new Error(`CSV: ${JSON.stringify(csv)}`);
     const json = await download(/^JSON$/);
-    if (!json.includes('"big":12345678901234567890') || JSON.parse(json)[0].z !== null) throw new Error(`JSON: ${json}`);
+    if (!json.includes(`"big":${big}`) || JSON.parse(json)[0].z !== null) throw new Error(`JSON: ${json}`);
     const lines = (await download('JSON Lines')).trim().split('\n');
     if (lines.length !== 1) throw new Error(`JSON Lines: ${lines}`);
   });
@@ -198,7 +203,11 @@ for (const browserName of (process.env.BROWSERS ?? 'chromium,firefox,webkit').sp
     await page.goto(url);
     await check(page, name, databases[name], step);
     await browser.close();
-    srv.kill();
+    // Windows cannot remove the SQLite file while the server still has it open.
+    await new Promise((resolve) => {
+      srv.once('exit', resolve);
+      srv.kill();
+    });
     results.push({ label, steps, problems });
   }
 }

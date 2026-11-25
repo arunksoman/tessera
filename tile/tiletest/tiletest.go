@@ -26,8 +26,13 @@ type Harness struct {
 	SleepSQL    string
 	// ArgMark is the placeholder for the first bound argument.
 	ArgMark string
-	// RunningSQL counts running statements containing marker, using the given marker.
+	// RunningSQL counts running statements containing marker, using the given marker. Nil
+	// suits an embedded store such as SQLite, whose statements run in the calling goroutine, so
+	// a call that has returned has stopped.
 	RunningSQL func(marker string) string
+	// InexactDecimal skips the exact decimal check, for stores that keep decimals as floats,
+	// as SQLite does.
+	InexactDecimal bool
 	// HostileTable creates a table with a name full of quoting characters and returns it.
 	HostileTable func(t *testing.T, s tile.Session) string
 	// CreateRoutine creates a function tt_add(a, b) returning their integer sum, in Schema.
@@ -186,10 +191,10 @@ func testStream(t *testing.T, h Harness) {
 func testLossless(t *testing.T, h Harness) {
 	s := session(t, h.Open(t), tile.SessionOptions{})
 	c := mustCollect(t, s, `SELECT total FROM orders`)
-	if got := string(c.rows[0][0].Raw); got != "12345678901234.5678" {
+	if got := string(c.rows[0][0].Raw); got != "12345678901234.5678" && !h.InexactDecimal {
 		t.Fatalf("decimal changed: %q", got)
 	}
-	if c.rows[0][0].Kind != tile.KindDecimal {
+	if c.rows[0][0].Kind != tile.KindDecimal && !h.InexactDecimal {
 		t.Fatalf("kind = %d, want decimal", c.rows[0][0].Kind)
 	}
 	if c.schema.Fields[0].Name != "total" || c.schema.Fields[0].NativeType == "" {
@@ -255,7 +260,9 @@ func testCancel(t *testing.T, h Harness) {
 	if el := time.Since(start); el > 3*time.Second {
 		t.Fatalf("cancel took %v", el)
 	}
-	waitNotRunning(t, c, h, h.SleepSQL)
+	if h.RunningSQL != nil {
+		waitNotRunning(t, c, h, h.SleepSQL)
+	}
 	if res := mustCollect(t, s, `SELECT 1`); len(res.rows) != 1 {
 		t.Fatal("session should survive a cancel")
 	}

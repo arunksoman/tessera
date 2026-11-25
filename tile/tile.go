@@ -555,7 +555,8 @@ type Loader interface {
 	InsertScript(ref ObjectRef, fields []string, rows [][]Value) (string, error)
 }
 
-// Explainer is an optional Conn facet. It builds a request that plans stmt without running it.
+// Explainer is an optional Conn facet. It builds a request that plans stmt without running it,
+// or an empty request when the store has no plan in that format.
 type Explainer interface {
 	ExplainRequest(stmt string, format ExplainFormat) Request
 }

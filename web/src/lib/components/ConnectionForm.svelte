@@ -30,9 +30,10 @@
 
 	const tile = $derived(app.tile(tileID));
 
-	// Enums and files are TLS modes and certificates for the built-in tiles: they go in a
-	// collapsed section, so the common fields come first.
-	const advanced = (f: FormField) => f.type === 'enum' || f.type === 'file';
+	// Enums and optional files are TLS modes and certificates for the built-in tiles: they go in
+	// a collapsed section, so the common fields come first. A required file, such as a SQLite
+	// database, stays in view.
+	const advanced = (f: FormField) => f.type === 'enum' || (f.type === 'file' && !f.required);
 	const basic = $derived(nextToHost((tile?.form ?? []).filter((f) => !advanced(f))));
 	const extra = $derived((tile?.form ?? []).filter(advanced));
 	const extraTitle = $derived(extra.every((f) => /ssl|tls/i.test(f.name)) ? 'TLS and certificates' : 'Advanced');

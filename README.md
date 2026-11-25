@@ -2,7 +2,7 @@
 
 An open-source database client with a plugin for each database. A tessera is a single tile in a mosaic: each plugin is a tile, and together they form one picture of your data.
 
-**Status: early development.** The `tess` command-line client and terminal UI work with PostgreSQL, MySQL, and MariaDB. The web app is not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
+**Status: early development.** The `tess` command-line client and terminal UI work with PostgreSQL, MySQL, MariaDB, and SQLite. The web app is not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
 
 ## Install
 
@@ -32,6 +32,12 @@ tess connect app
 tess query -c app "SELECT * FROM orders LIMIT 10"
 tess query -c app -f csv "SELECT * FROM orders" > orders.csv
 tess history -c app
+```
+
+A SQLite profile names a file. tess opens only an existing file unless you add `--set create=true`:
+
+```sh
+tess profile add notes --tile sqlite --set path=./notes.db
 ```
 
 New remote profiles verify the server's TLS identity unless you choose a weaker mode with `--tls`, which prints a warning.
@@ -116,7 +122,7 @@ Exit codes: `0` success, `1` error, `2` usage error, `3` refused by a safety che
 
 ### Plugins
 
-PostgreSQL, MySQL, and MariaDB are built in. Other databases come as plugins: separate programs that tess starts on demand and talks to over standard input and output.
+PostgreSQL, MySQL, MariaDB, and SQLite are built in. Other databases come as plugins: separate programs that tess starts on demand and talks to over standard input and output.
 
 ```sh
 tess plugin trust acme "PUBLIC-KEY"                       # once, for each publisher you trust
@@ -195,6 +201,17 @@ printf 'tessera_dev\n' | tess profile add sakila-pg --tile postgres --host 127.0
   --user tessera --database sakila --tls disable --password-stdin
 printf 'tessera_dev\n' | tess profile add sakila-mysql --tile mysql --host 127.0.0.1 --port 53384 \
   --user tessera --database sakila --tls DISABLED --password-stdin
+```
+
+SQLite needs no container. Its tests load Sakila into a temporary file; to keep a copy, build one with tess. Sakila inserts staff and stores, which refer to each other, so foreign keys are checked at commit, and `--yes` answers the data script's `DELETE` statements. The load takes about a minute.
+
+```sh
+tess profile add sakila-sqlite --tile sqlite --set path=sakila.db --set create=true --no-history
+tess query -c sakila-sqlite < test/fixtures/sakila/sqlite/sqlite-sakila-schema.sql
+(echo "BEGIN; PRAGMA defer_foreign_keys = ON;"; cat test/fixtures/sakila/sqlite/sqlite-sakila-insert-data.sql; printf '
+COMMIT;
+') |
+  tess query -c sakila-sqlite --yes > /dev/null
 ```
 
 ## Release
