@@ -20,7 +20,7 @@
     "@codemirror/language": "6.13.1",
     "@codemirror/search": "6.7.2",
     "@codemirror/state": "6.7.6",
-    "@codemirror/view": "6.43.15",
+    "@codemirror/view": "6.44.0",
     "@lezer/highlight": "1.2.5",
     "sql-formatter": "15.10.0",
     "svelte": "5.59.1"
