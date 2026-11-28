@@ -263,7 +263,7 @@ Installing:
 4. Check the descriptor's name matches the name asked for, its API version matches, its `min_tess` and `max_tess` include this tess, and a build exists for this platform.
 5. Show the name, version, source, binary URL, hash, and signer, say that the plugin is not sandboxed, and ask. Without a terminal, `--yes` is required.
 6. Download into a staging directory under the plugin directory (512 MiB cap), hashing as it goes, and refuse a mismatch.
-7. Start it once to read its manifest, and refuse it if its tile ID differs from its name or its own `min_tess` and `max_tess` exclude this tess.
+7. Start it once to read its manifest, and refuse it if its tile ID differs from its name, its own `min_tess` and `max_tess` exclude this tess, or its `stability` is not `alpha`, `beta`, or `stable`.
 8. Write `plugin.json` with the pinned hash and manifest, then rename the staging directory into place.
 
 Installed plugins live in `<config dir>/plugins/NAME/`, inside the `0700` config directory.
@@ -286,6 +286,7 @@ A separate process is not a sandbox: a plugin runs with the user's OS privileges
 **Versioning:**
 
 - A plugin states the tess versions it works with as `min_tess` and `max_tess`, both optional and inclusive, in its descriptor and again in its manifest. tess checks them at install, skips an installed plugin whose recorded bounds exclude it, and checks the binary's own bounds at every start. A development build counts as newer than every release. A maximum blocks later releases that would have worked, so publishers should prefer a minimum alone.
+- A plugin states how settled it is as `stability` in its manifest: `alpha`, `beta`, or `stable`, or nothing. The text comes from untrusted code and is shown in every front-end, so tess accepts only those words. `tess plugin list`, the TUI connection form, and the web app's connection picker and form show it beside the plugin's version; built-in tiles show neither.
 
 - Within a major version, only additions: new facets, capabilities, methods, and optional fields.
 - Tiles declare features through capabilities and facets, not through version checks.

@@ -87,6 +87,7 @@ Design section 3. Built before the contract is frozen, so plugins built now may 
 - [ ] Meet the out-of-process throughput gate (protocol ceiling measured at about 517k one-column rows/s; see spike-results.md)
 - [ ] Carry `Env.Dial` and the `Completer` facet across the protocol
 - [x] Refuse downgrades to an older signed version
+- [x] Plugin `stability` (alpha, beta, stable) in the manifest, checked at install, and shown with the version in `tess plugin list`, the TUI connection form, and the web connection picker and form
 - [ ] Publish an official index and publisher key, so `tess plugin install NAME` works without configuration
 
 ### Platform services

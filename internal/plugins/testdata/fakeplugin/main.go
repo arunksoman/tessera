@@ -25,12 +25,18 @@ func main() {
 
 type fake struct{ id string }
 
-// Manifest needs tess 99.0.0 when the plugin's name starts with "future".
+// Manifest needs tess 99.0.0 when the plugin's name starts with "future", is beta when it
+// starts with "beta", and claims a stability tess does not know when it starts with "shaky".
 func (f fake) Manifest() tile.Manifest {
 	m := tile.Manifest{ID: f.id, Name: "Fake " + f.id, APIVersion: tile.APIVersion, Version: "1.0.0",
 		ConnForm: tile.Form{Fields: []tile.FormField{{Name: "host", Label: "Host", Type: "text"}}}}
-	if strings.HasPrefix(f.id, "future") {
+	switch {
+	case strings.HasPrefix(f.id, "future"):
 		m.MinTess = "99.0.0"
+	case strings.HasPrefix(f.id, "beta"):
+		m.Stability = "beta"
+	case strings.HasPrefix(f.id, "shaky"):
+		m.Stability = "experimental\x1b[31m"
 	}
 	return m
 }

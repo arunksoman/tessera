@@ -6,6 +6,7 @@
 	import Dialog from './Dialog.svelte';
 	import FilePicker from './FilePicker.svelte';
 	import Icon from './Icon.svelte';
+	import PluginVersion from './PluginVersion.svelte';
 	import TileMark from './TileMark.svelte';
 
 	let { editing, onclose }: { editing?: Profile; onclose: () => void } = $props();
@@ -229,6 +230,7 @@
 				<button type="button" class="type" onclick={() => pick(t.id)}>
 					<TileMark tile={t.id} size={32} all />
 					<span>{t.name}</span>
+					<PluginVersion tile={t} />
 				</button>
 			{/each}
 		</div>
@@ -242,6 +244,7 @@
 			<div class="kind">
 				<TileMark tile={tileID} size={24} all />
 				<strong>{tile?.name ?? tileID}</strong>
+				<PluginVersion {tile} />
 				{#if !editing && app.tiles.length > 1}
 					<button type="button" class="btn ghost change" onclick={() => (step = 'pick')}>Change</button>
 				{/if}

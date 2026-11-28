@@ -204,7 +204,11 @@ func (a *App) pluginList() error {
 		if r.Signed() {
 			signer = "signed by " + r.Publisher
 		}
-		fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\n", r.Name, r.Version, signer, oneLine(r.Source))
+		stability := r.Manifest.Stability
+		if stability == "" {
+			stability = "-"
+		}
+		fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Version, stability, signer, oneLine(r.Source))
 	}
 	for _, err := range errs {
 		fmt.Fprintf(a.Stderr, "warning: %v\n", err)

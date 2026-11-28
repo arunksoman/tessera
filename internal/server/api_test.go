@@ -118,14 +118,16 @@ func TestTilesDescribeForms(t *testing.T) {
 	f := newFixture(t)
 	f.login()
 	var tiles []struct {
-		ID, Name string
-		Style    struct{ Color, Glyph string }
-		Form     []struct{ Name, Label, Type string }
+		ID, Name           string
+		Version, Stability string
+		Style              struct{ Color, Glyph string }
+		Form               []struct{ Name, Label, Type string }
 	}
 	if code := f.call("GET", "/api/tiles", nil, &tiles); code != 200 {
 		t.Fatal(code)
 	}
-	if len(tiles) != 1 || tiles[0].ID != "fake" || len(tiles[0].Form) != 5 || tiles[0].Form[2].Type != "secret" || tiles[0].Style.Glyph != "F" {
+	if len(tiles) != 1 || tiles[0].ID != "fake" || len(tiles[0].Form) != 5 || tiles[0].Form[2].Type != "secret" || tiles[0].Style.Glyph != "F" ||
+		tiles[0].Version != "1.2.0" || tiles[0].Stability != "beta" {
 		t.Fatalf("%+v", tiles)
 	}
 }

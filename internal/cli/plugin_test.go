@@ -69,7 +69,8 @@ func TestPluginEndToEnd(t *testing.T) {
 	if r.code != exitOK || !strings.Contains(r.stdout, "installed kv") || !strings.Contains(r.err, "not signed") {
 		t.Fatalf("%+v", r)
 	}
-	if r := tess("", "plugin", "list"); !strings.Contains(r.stdout, "kv\tlocal\tunsigned") {
+	// A plugin that states no stability shows "-" in that column.
+	if r := tess("", "plugin", "list"); !strings.Contains(r.stdout, "kv\tlocal\t-\tunsigned") {
 		t.Fatal(r)
 	}
 	if r := tess("", "plugin", "verify"); r.code != exitOK || !strings.Contains(r.stdout, "kv\tok") {

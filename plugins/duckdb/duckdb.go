@@ -35,8 +35,8 @@ type Tile struct{}
 
 func (Tile) Manifest() tile.Manifest {
 	return tile.Manifest{
-		ID: "duckdb", Name: "DuckDB", APIVersion: tile.APIVersion, Version: version, MinTess: minTess,
-		Style: tile.Style{Color: "amber", Glyph: "D"},
+		ID: "duckdb", Name: "DuckDB", APIVersion: tile.APIVersion, Version: version, MinTess: minTess, Stability: "beta",
+		Style: tile.Style{Color: "ochre", Glyph: "D"},
 		ConnForm: tile.Form{Fields: []tile.FormField{
 			{Name: "path", Label: "Database file", Type: "file", Required: true},
 			{Name: "create", Label: "Create the file if it is missing", Type: "bool"},
