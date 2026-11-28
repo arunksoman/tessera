@@ -22,7 +22,7 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
     "@lezer/highlight": "1.2.5",
-    "sql-formatter": "15.9.0",
+    "sql-formatter": "15.10.0",
     "svelte": "5.59.1"
   },
   "devDependencies": {
