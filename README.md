@@ -133,6 +133,13 @@ tess plugin verify
 tess plugin remove redis
 ```
 
+DuckDB is an official plugin from this repository, released separately from tess because its driver needs cgo. DuckDB is linked into the plugin, so nothing else needs installing. See [plugins/duckdb](plugins/duckdb/README.md).
+
+```sh
+tess plugin install duckdb --from github:arunksoman/tessera@duckdb-v0.1.0
+tess profile add warehouse --tile duckdb --set path=warehouse.duckdb
+```
+
 To make `tess plugin install NAME` work without `--from`, map names to sources in `config.toml`:
 
 ```toml

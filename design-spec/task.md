@@ -4,9 +4,9 @@ Implementation checklist for [design.md](design.md). Section numbers below refer
 
 ## Scope
 
-**In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB, PostgreSQL, and SQLite files.
+**In:** `tess` CLI and TUI, `tess serve` web app, MySQL/MariaDB, PostgreSQL, and SQLite files. DuckDB files through an official plugin in `plugins/duckdb`, released on its own.
 
-**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, remote libSQL (Turso), DuckDB, query sharing and charts. Redis and Elasticsearch can arrive as installable plugins without changes to `tess`.
+**Out for now:** Wails desktop, Redis, MongoDB, Elasticsearch, remote libSQL (Turso), query sharing and charts. Redis and Elasticsearch can arrive as installable plugins without changes to `tess`.
 
 **Changes from the design:**
 
@@ -260,6 +260,23 @@ The grid prototype already follows light and dark themes, tested by `web/spikes/
 - [ ] Table rebuild for column type, nullability, default, and key changes
 - [ ] Remote libSQL (Turso) over HTTP
 - [ ] Limit which database files `tess serve` opens when it is not on loopback
+
+### DuckDB plugin
+
+Design sections 6 and 11. Its own module in `plugins/duckdb`, because the DuckDB driver needs cgo.
+
+- [x] DuckDB lexing in `sqlish`: PostgreSQL's rules with block comments that do not nest
+- [x] Plugin on `duckdb-go`, statically linked: a file path only, created only on request, extensions never installed or loaded on their own, file and URL access off unless the profile allows it
+- [x] Values: exact integers to 128 bits, decimals with their scale, times, intervals, UUIDs, and lists, structs, and maps as JSON
+- [x] Tree, browse, edit, load, and `EXPLAIN`, with the conformance suite in the unit tests, in and out of process
+- [x] CI on Linux, macOS, and Windows, and a release workflow for `duckdb-v*` tags that builds, signs, and publishes a descriptor
+- [x] End-to-end check: `tess` installs the plugin binary and queries a file through it
+- [ ] First signed release, with the signing key in the repository secrets
+- [ ] Structure designer: columns and indexes (DuckDB has no triggers, so the shared structure tests need a way to skip them)
+- [ ] Macros in the tree as routines
+- [ ] JSON plans, read from `EXPLAIN (FORMAT JSON)`'s second column
+- [ ] Lossless JSON values in query results; the driver decodes JSON into floats, though browsing reads it exactly
+- [ ] Read-only profiles enforced by DuckDB itself, which sets access mode per database rather than per connection
 
 ### Data
 

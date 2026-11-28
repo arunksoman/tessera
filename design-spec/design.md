@@ -431,6 +431,10 @@ This uses only `net/http`. Page encoding is a small length-prefixed binary forma
 
 A profile names a file, never a connection string. The path is percent-encoded into a `file:` URI, so a `?` or `#` in it cannot add a parameter, and the tile sets its own: `mode=rw` (`rwc` only when the profile asks to create the file, so a typo does not open a new empty database), defensive mode, foreign keys on, a busy timeout, and `trusted_schema` off, so a function with side effects cannot run from a view or trigger stored in the file. Extensions cannot load. A read-only session sets `query_only`, which SQLite enforces on every attached database. A session owns a pooled connection only while it lives and is then discarded, so temporary tables, `ATTACH`, and `PRAGMA` changes never reach the next session. SQLite has no exact decimal type, no comments, and no named foreign keys; foreign keys are named after their position and target. `ALTER TABLE` cannot change a column's type, nullability, or default, or add a key, so the designer refuses those until a table rebuild is planned.
 
+### DuckDB
+
+DuckDB is an official plugin in `plugins/duckdb`, not a built-in tile, because its driver needs cgo. It links DuckDB statically, so the plugin binary is all a user installs. A profile names a file; a path containing `?` is refused, since the driver reads settings after one. A missing file is an error unless the profile asks to create it. Extensions never install or load on their own, and community extensions are off, so a view in an untrusted file cannot pull in `httpfs` to send data out. Unless the profile allows it, `enable_external_access` is off, so SQL cannot read or write any file or URL but the database itself, and cannot turn that back on. DuckDB opens a file once per process with one set of settings, so two profiles for the same file must agree on that choice. Access mode is set for the whole database, not per connection, so a read-only profile rests on the engine's gate alone. DuckDB's block comments do not nest, unlike PostgreSQL's, so it has its own `sqlish` dialect. The tree shows the opened database's schemas, tables, and views. DuckDB has no triggers, so the plugin has no designer yet. Its JSON plans come back in a second column, so it offers text plans only. Statements that are not queries return a `Count` or `Success` column, which the plugin turns into a summary when its classifier agrees the statement is not a read.
+
 **Host-owned dialing:** the engine passes `Env.Dial` to each driver (`pgconn` `DialFunc`, MySQL custom `DialFunc`, and equivalents for the future drivers), so SSH and dial policy live in one place.
 
 ### Future NoSQL
@@ -637,6 +641,15 @@ tessera/
 | `github.com/zalando/go-keyring` | OS keychain on all three platforms. Small. | Per-OS code |
 | `github.com/BurntSushi/toml` | Human-edited config. No transitive dependencies. | YAML libraries, larger and riskier |
 | `github.com/coreos/go-oidc/v3` + `x/oauth2` | OIDC login. Token validation must not be hand-written. Arrives with SSO in v1. | |
+
+### Shipped in plugins from this repository
+
+Official plugins live in `plugins/NAME`, each its own Go module, so their dependencies never reach `tess`. They build against the tessera code in the same commit through a `replace` directive.
+
+| Dependency | Plugin | Why | Alternative rejected |
+|---|---|---|---|
+| `github.com/arunksoman/tessera` | all | The `tile` contract, the plugin protocol, `sqlish`, and `sqlgen`, from the same commit. A module inside this repository may import its `internal` packages, which keeps one lexer for the safety gate. | A separate repository, which would have to copy the lexer |
+| `github.com/duckdb/duckdb-go/v2` | `duckdb` | The official DuckDB driver. It links prebuilt static DuckDB libraries for Linux, macOS, and Windows, so users install nothing else. Needs cgo, which is why DuckDB is a plugin. | A pure-Go DuckDB, which does not exist; shelling out to the `duckdb` CLI, which loses types, streaming, and cancel |
 
 **Deliberately excluded from the brief's suggestions:**
 

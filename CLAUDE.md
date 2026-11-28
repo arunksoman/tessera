@@ -13,8 +13,8 @@ Tessera is a plugin-based database client in Go. The `tess` command-line client,
 ## Working rules
 
 - Work test-first, and tick items in `task.md` as they finish. Tick a box only when the whole item is done. Split a partly done item so each box stays truthful.
-- Scope is MySQL/MariaDB, PostgreSQL, and SQLite, with CLI, TUI, and web. Wails and NoSQL are out for now, although `design.md` still describes them.
-- `tess` must build with `CGO_ENABLED=0`. Every direct dependency needs a justification in section 11 of `design.md`.
+- Scope is MySQL/MariaDB, PostgreSQL, and SQLite, with CLI, TUI, and web, plus DuckDB as an official plugin in `plugins/duckdb`. Wails and NoSQL are out for now, although `design.md` still describes them.
+- `tess` must build with `CGO_ENABLED=0`; only plugins in `plugins/` may use cgo. Every direct dependency, of tess or of a plugin, needs a justification in section 11 of `design.md`.
 - All frontend work needs both light and dark themes, following the system by default, with a persistent manual choice.
 - `toolchain` in `go.mod` is pinned to a patched Go release because `govulncheck` found reachable standard library vulnerabilities in older ones. Do not lower it.
 
@@ -33,6 +33,10 @@ go test -tags integration ./internal/tiles/... ./internal/cli/... ./internal/tui
 
 # SQLite needs no server: its conformance suite and Sakila load run with the unit tests
 go test ./internal/tiles/sqlite/
+
+# DuckDB is a plugin in its own module because its driver needs cgo; on Windows it needs a UCRT
+# MinGW gcc, so without one run it in Docker: docker run --rm -v "$PWD":/src -w /src/plugins/duckdb golang:1.26 go test ./...
+(cd plugins/duckdb && CGO_ENABLED=1 go test ./...)
 
 docker compose --profile matrix up -d --wait --build     # adds the oldest supported versions
 TESSERA_TEST_MATRIX=1 go test -tags integration ./internal/tiles/...
@@ -74,6 +78,7 @@ Dependencies point one way: `cmd/tess` → `internal/cli` → `internal/tui` →
 - **`internal/tui`** is the Bubble Tea front-end. Workers report through `Model.events` and never touch model state. `actions` is the one registry behind keys, the palette, and help. Tests in `fake_test.go` run a real program with no terminal, on a fake tile.
 - **`internal/tiles/sqlite`** is the SQLite tile on `modernc.org/sqlite`. A session's connection is discarded on close rather than reset. The driver parses text in `DATE`, `DATETIME`, and `TIMESTAMP` columns into times, so browsing selects those columns as text to keep guards and paging exact.
 - **`internal/tiles/sqlgen`** builds browse and edit statements for the SQL tiles. **`internal/meta`** caches the catalog for completion.
+- **`plugins/duckdb`** is the DuckDB tile as an official plugin, its own Go module on cgo `duckdb-go`, built against this commit through `replace`. It imports `sqlish` and `sqlgen` from `internal`, which Go allows inside the same repository. Released from `duckdb-v*` tags, never marked latest.
 - **`internal/ioformat`** has streaming writers. Database content is untrusted: the table writer strips terminal control characters, and CSV neutralizes formulas.
 
 ### Invariants that are easy to break
