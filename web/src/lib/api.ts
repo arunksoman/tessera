@@ -14,6 +14,20 @@ export type FormField = {
 	options?: string[];
 	default?: string;
 };
+export type FileEntry = { name: string; dir?: boolean; size?: number };
+export type Files = {
+	path: string;
+	kind: 'dir' | 'file' | 'missing';
+	parent?: string;
+	parentExists?: boolean;
+	size?: number;
+	entries?: FileEntry[];
+	truncated?: boolean;
+	denied?: string;
+	home: string;
+	roots: string[];
+	sep: string;
+};
 export type Tile = { id: string; name: string; style: { color?: string; glyph?: string }; form: FormField[] };
 
 export type Profile = {
@@ -192,6 +206,8 @@ export const api = {
 	structure: (profile: string, ref: Ref) => call<Structure>('POST', `${conn(profile)}/structure`, { ref }),
 	planStructure: (profile: string, ref: Ref, changes: StructureChange[]) =>
 		call<Plan>('POST', `${conn(profile)}/structure/plan`, { ref, changes }),
+	/** Lists a folder, or says whether a path is a file or missing. Only a local tess serve answers. */
+	files: (path: string) => call<Files>('GET', `/api/files?path=${encodeURIComponent(path)}`),
 	createScript: (profile: string, ref: Ref) => call<{ script: string }>('POST', `${conn(profile)}/script`, { ref }),
 	/** A download link: the browser saves the file in the background, streaming from the server. */
 	exportURL(profile: string, ref: Ref, format: ExportFormat, neutralize = true): string {

@@ -15,6 +15,7 @@ The plugin contract is [tile/tile.go](../tile/tile.go). It holds only what is bu
 | Autocomplete | Hand-written tolerant lexer and clause tracker. Neither Vitess nor `pg_query` is used. |
 | Build | `CGO_ENABLED=0` for `tess`. Only the desktop app accepts cgo. |
 | Local state | TOML for config and profiles, SQLite (`modernc.org/sqlite`) for history, saved queries, cache, and audit. |
+| SQLite databases | A built-in tile on the same `modernc.org/sqlite`, so it costs no dependency and no cgo. Local files only; remote libSQL (Turso) would be HTTP on `net/http`. |
 | Secrets | A random master key in the OS keychain, encrypting secret blobs with AES-256-GCM. Argon2id passphrase as fallback. |
 | Cloud auth | A configurable token helper command. No cloud SDKs. |
 
@@ -426,6 +427,10 @@ This uses only `net/http`. Page encoding is a small length-prefixed binary forma
 
 **Server mode restriction:** connection settings are built field by field, and raw connection strings are not accepted from web users. `pgconn` itself warns that `servicefile` can override host and `sslmode`, and parameters like `sslrootcert` and `passfile` read local files.
 
+### SQLite
+
+A profile names a file, never a connection string. The path is percent-encoded into a `file:` URI, so a `?` or `#` in it cannot add a parameter, and the tile sets its own: `mode=rw` (`rwc` only when the profile asks to create the file, so a typo does not open a new empty database), defensive mode, foreign keys on, a busy timeout, and `trusted_schema` off, so a function with side effects cannot run from a view or trigger stored in the file. Extensions cannot load. A read-only session sets `query_only`, which SQLite enforces on every attached database. A session owns a pooled connection only while it lives and is then discarded, so temporary tables, `ATTACH`, and `PRAGMA` changes never reach the next session. SQLite has no exact decimal type, no comments, and no named foreign keys; foreign keys are named after their position and target. `ALTER TABLE` cannot change a column's type, nullability, or default, or add a key, so the designer refuses those until a table rebuild is planned.
+
 **Host-owned dialing:** the engine passes `Env.Dial` to each driver (`pgconn` `DialFunc`, MySQL custom `DialFunc`, and equivalents for the future drivers), so SSH and dial policy live in one place.
 
 ### Future NoSQL
@@ -497,6 +502,8 @@ Database credentials, SSH keys, query results, history and audit data, and the a
 | Raw filter expression | Same privilege as the console, so `viewer` cannot use it |
 | SSRF: the server becomes a pivot into the internal network | Only admins create connections. Dial policy denies link-local and metadata addresses (`169.254.169.254`) by default, with an optional allowlist. |
 | Malicious database server | `LOAD DATA LOCAL` stays disabled (`allowAllFiles=false`). Strict limits on message size. Cell previews are truncated. |
+| Malicious SQLite file | Defensive mode, `trusted_schema` off, and no extensions. A file is still parsed by SQLite in process, so a crafted one can only be refused cleanly, not sandboxed. |
+| Web user names a SQLite path | A profile opens any file the `tess` user can read, and `ATTACH` or `VACUUM INTO` can write others, both gated as writes. On loopback that is the user's own access. A non-loopback server needs an allowed directory, which is not built yet. The connection form's file picker lists folders through `GET /api/files`, which, like file fields, only a loopback server answers. |
 | Man in the middle | Verified TLS by default on new remote profiles, with a visible warning for weak modes. SSH host keys are checked against `known_hosts` with trust on first use, never `InsecureIgnoreHostKey`. |
 | Credential stuffing | Argon2id password hashes, rate limits per IP and account, optional OIDC, secure session cookies with server-side revocation |
 | Accidental production damage | Environment tags, confirmations, type-to-confirm on tagged production, plan preview |
@@ -626,7 +633,7 @@ tessera/
 | `github.com/go-sql-driver/mysql` | The standard MySQL driver. TLS, Unix sockets, custom dial, custom auth plugins. | Writing a protocol client |
 | `charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, `charm.land/lipgloss/v2` | Required by the brief. Note the v2 module path and API changes (`KeyPressMsg`, no `AdaptiveColor`). | |
 | `golang.org/x/term` | Reads passwords without echo, and detects a terminal, in the CLI. Maintained by the Go team. | Per-OS console code |
-| `modernc.org/sqlite` | Pure-Go SQLite for state, supporting `CGO_ENABLED=0` on all targets, and later the SQLite tile. It is the largest binary contributor, so measure it in M0. | `mattn/go-sqlite3` (cgo); `bbolt` (no query or search for history) |
+| `modernc.org/sqlite` | Pure-Go SQLite for state and for the SQLite tile, supporting `CGO_ENABLED=0` on all targets. It is the largest binary contributor, so measure it in M0. | `mattn/go-sqlite3` (cgo); `bbolt` (no query or search for history) |
 | `github.com/zalando/go-keyring` | OS keychain on all three platforms. Small. | Per-OS code |
 | `github.com/BurntSushi/toml` | Human-edited config. No transitive dependencies. | YAML libraries, larger and riskier |
 | `github.com/coreos/go-oidc/v3` + `x/oauth2` | OIDC login. Token validation must not be hand-written. Arrives with SSO in v1. | |
@@ -785,7 +792,7 @@ Every item can change the design, so these run before anything else.
 
 ### Phase 3, NoSQL (about 4 to 6 months)
 
-- Redis tile released, then MongoDB, then Elasticsearch/OpenSearch, in order of validating value. SQLite follows as a cheap addition.
+- Redis tile released, then MongoDB, then Elasticsearch/OpenSearch, in order of validating value. The SQLite tile was pulled forward into Phase 2.
 - Per-language editors and JSON tree, per-type Redis editors.
 - Freeze `tile` at `v1`. The out-of-process host, signing, and install were built early, in Phase 1.
 

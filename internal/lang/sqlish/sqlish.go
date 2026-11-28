@@ -22,11 +22,14 @@ type Dialect struct {
 	dashNeedsSpace  bool // "--" starts a comment only before whitespace
 	execComments    bool // /*! ... */ runs as code
 	delimiterCmd    bool // the mysql client's DELIMITER command
+	bracketIdent    bool // [name] is a quoted identifier
+	triggerBodies   bool // CREATE TRIGGER ... BEGIN ...; END is one statement
 }
 
 var (
 	Postgres = Dialect{id: "sql-pg", dollarQuote: true, nestedComments: true}
 	MySQL    = Dialect{id: "sql-mysql", backslashString: true, hashComment: true, backtickIdent: true, dashNeedsSpace: true, execComments: true, delimiterCmd: true}
+	SQLite   = Dialect{id: "sql-sqlite", backtickIdent: true, bracketIdent: true, triggerBodies: true}
 )
 
 // Language returns the dialect as a tile.Language.
@@ -108,6 +111,13 @@ func (d Dialect) lexUntil(s string, stop func(token) bool) []token {
 			i = end
 		case c == '`' && d.backtickIdent:
 			end := quoted(s, i, '`', false)
+			emit(tokIdent, i, end)
+			i = end
+		case c == '[' && d.bracketIdent:
+			end := len(s) // a bracketed name has no escape for ]
+			if n := strings.IndexByte(s[i:], ']'); n >= 0 {
+				end = i + n + 1
+			}
 			emit(tokIdent, i, end)
 			i = end
 		case c == '$' && d.dollarQuote:
@@ -327,6 +337,11 @@ func (d Dialect) Split(text string) []tile.Span {
 					}
 					last = p + k
 				}
+				if start >= 0 && d.triggerBodies && d.inTriggerBody(text[start:p+k]) {
+					last = p + k + len(delim)
+					p += k + len(delim)
+					continue
+				}
 				finish(p + k)
 				p += k + len(delim)
 			}
@@ -339,6 +354,39 @@ func (d Dialect) Split(text string) []tile.Span {
 	}
 	finish(-1)
 	return spans
+}
+
+// inTriggerBody reports whether stmt, which a semicolon follows, is a CREATE TRIGGER whose
+// BEGIN ... END body is still open, so the semicolon ends a statement inside the body. As in
+// sqlite3_complete, the body closes at an END that closes no CASE. A trigger that never closes
+// runs to the end of the text, which the server then refuses as one statement.
+func (d Dialect) inTriggerBody(stmt string) bool {
+	// Most statements are rejected after their first word, so a long script is not lexed twice.
+	head := d.lexUntil(stmt, func(t token) bool {
+		return t.kind != tokWord || t.upper != "CREATE" && t.upper != "TEMP" && t.upper != "TEMPORARY"
+	})
+	n := len(head)
+	if n < 2 || head[0].upper != "CREATE" || head[n-1].upper != "TRIGGER" || n > 3 || (n == 3 && head[1].upper == "CREATE") {
+		return false
+	}
+	toks := d.lex(stmt)
+	body, cases := false, 0
+	for i, t := range toks {
+		if t.kind != tokWord {
+			continue
+		}
+		switch {
+		case !body:
+			body = t.upper == "BEGIN"
+		case t.upper == "CASE":
+			cases++
+		case t.upper == "END" && cases > 0:
+			cases--
+		case t.upper == "END" && i == len(toks)-1:
+			return false
+		}
+	}
+	return true
 }
 
 func isCode(t token) bool { return t.kind != tokString && t.kind != tokIdent }
@@ -517,7 +565,8 @@ func isTxControl(toks []token) bool {
 	})
 }
 
-var txWords = []string{"TRANSACTION", "WORK", "AND", "NO", "CHAIN"}
+// DEFERRED, IMMEDIATE, and EXCLUSIVE are SQLite's locking modes for BEGIN.
+var txWords = []string{"TRANSACTION", "WORK", "AND", "NO", "CHAIN", "DEFERRED", "IMMEDIATE", "EXCLUSIVE"}
 
 // txEffect reads a plain transaction-control statement. AND CHAIN ends one transaction and
 // opens the next.

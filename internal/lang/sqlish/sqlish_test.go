@@ -33,6 +33,19 @@ func TestSplit(t *testing.T) {
 		{"mysql comments do not nest", MySQL, "SELECT /* /* */ 1; SELECT 2", []string{"SELECT /* /* */ 1", "SELECT 2"}},
 		{"mysql double dash needs space", MySQL, "SELECT 1--2; SELECT 2", []string{"SELECT 1--2", "SELECT 2"}},
 		{"mysql executable comment stays whole", MySQL, "/*!50000 DROP TABLE t */; SELECT 2", []string{"/*!50000 DROP TABLE t */", "SELECT 2"}},
+		{"sqlite bracket identifier", SQLite, "SELECT [a;b]; SELECT 2", []string{"SELECT [a;b]", "SELECT 2"}},
+		{"sqlite backtick", SQLite, "SELECT `;`; SELECT 2", []string{"SELECT `;`", "SELECT 2"}},
+		{"sqlite has no backslash escape", SQLite, `SELECT 'a\'; SELECT 2`, []string{`SELECT 'a\'`, "SELECT 2"}},
+		{"sqlite hash is not a comment", SQLite, "SELECT 1 # 2; SELECT 2", []string{"SELECT 1 # 2", "SELECT 2"}},
+		{"sqlite trigger body", SQLite, "CREATE TRIGGER t AFTER INSERT ON a BEGIN UPDATE a SET x = 1; DELETE FROM b; END; SELECT 2",
+			[]string{"CREATE TRIGGER t AFTER INSERT ON a BEGIN UPDATE a SET x = 1; DELETE FROM b; END", "SELECT 2"}},
+		{"sqlite temp trigger with case", SQLite, "create temp trigger t before delete on a begin select case when 1 then 2 end; end;\nSELECT 2",
+			[]string{"create temp trigger t before delete on a begin select case when 1 then 2 end; end", "SELECT 2"}},
+		{"sqlite trigger end on its own line", SQLite, "CREATE TRIGGER t AFTER UPDATE ON a\n BEGIN\n  UPDATE a SET x = 1;\n END\n;\nSELECT 2",
+			[]string{"CREATE TRIGGER t AFTER UPDATE ON a\n BEGIN\n  UPDATE a SET x = 1;\n END", "SELECT 2"}},
+		{"sqlite trigger without end runs on", SQLite, "CREATE TRIGGER t BEGIN SELECT 1; SELECT 2", []string{"CREATE TRIGGER t BEGIN SELECT 1; SELECT 2"}},
+		{"sqlite begin is not a trigger", SQLite, "BEGIN; SELECT 1; END;", []string{"BEGIN", "SELECT 1", "END"}},
+		{"pg has no trigger bodies", Postgres, "CREATE TRIGGER t BEGIN SELECT 1; END", []string{"CREATE TRIGGER t BEGIN SELECT 1", "END"}},
 		{"unterminated string", Postgres, "SELECT 'oops; SELECT 2", []string{"SELECT 'oops; SELECT 2"}},
 		{"empty", Postgres, " ; ;\n", nil},
 		{"comment only", Postgres, "-- nothing", nil},
@@ -107,6 +120,16 @@ func TestClassify(t *testing.T) {
 		{"keyword in string is ignored", Postgres, "SELECT 'DROP TABLE t'", "SELECT", tile.RiskNone, true},
 		{"keyword in identifier is ignored", Postgres, `SELECT "delete" FROM t`, "SELECT", tile.RiskNone, true},
 		{"second statement counts", Postgres, "SELECT 1; DROP TABLE t", "DROP", tile.RiskDestructive, false},
+
+		{"sqlite begin immediate", SQLite, "BEGIN IMMEDIATE TRANSACTION", "BEGIN", tile.RiskNone, true},
+		{"sqlite pragma is a write", SQLite, "PRAGMA query_only = 0", "PRAGMA", tile.RiskWrite, false},
+		{"sqlite pragma read is still a write", SQLite, "PRAGMA table_info(t)", "PRAGMA", tile.RiskWrite, false},
+		{"sqlite attach is a write", SQLite, "ATTACH 'x.db' AS x", "ATTACH", tile.RiskWrite, false},
+		{"sqlite vacuum into is a write", SQLite, "VACUUM INTO '/tmp/x.db'", "VACUUM", tile.RiskWrite, false},
+		{"sqlite insert or replace", SQLite, "INSERT OR REPLACE INTO t VALUES (1)", "INSERT", tile.RiskWrite, false},
+		{"sqlite keyword in brackets is ignored", SQLite, "SELECT [delete] FROM t", "SELECT", tile.RiskNone, true},
+		{"sqlite trigger body counts", SQLite, "CREATE TRIGGER t AFTER INSERT ON a BEGIN DELETE FROM b; END", "CREATE", tile.RiskDestructive, false},
+		{"sqlite explain query plan", SQLite, "EXPLAIN QUERY PLAN DELETE FROM t", "EXPLAIN", tile.RiskNone, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -155,11 +178,12 @@ func FuzzDialects(f *testing.F) {
 		"$", "$$", "$a", "/*M!", "WITH (", ")))", "EXPLAIN (", "PASSWORD", "IDENTIFIED BY '", "\x00\xff",
 		"DELIMITER $$\nSELECT 1; DROP TABLE t$$", "delimiter ;;\nEND;;\nDELIMITER ;\n", "DELIMITER '", "DELIMITER \\",
 		"SELECT 1; DELIMITER //\n", "\tDELIMITER\r\n",
+		"[", "[a;b]", "CREATE TRIGGER t BEGIN SELECT 1; END;", "CREATE TEMP TRIGGER t BEGIN SELECT CASE WHEN 1 THEN 2 END; END; DROP TABLE t",
 	} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		for _, d := range []Dialect{Postgres, MySQL} {
+		for _, d := range []Dialect{Postgres, MySQL, SQLite} {
 			last := 0
 			c := d.Classify(in)
 			for _, s := range d.Split(in) {
@@ -204,6 +228,9 @@ func TestClassifyEffects(t *testing.T) {
 		{MySQL, "TRUNCATE t", tile.TxNone, true},
 		{Postgres, "INSERT INTO t VALUES (1)", tile.TxNone, false},
 		{Postgres, "SELECT 1; CREATE INDEX i ON t (a)", tile.TxNone, true},
+		{SQLite, "BEGIN EXCLUSIVE", tile.TxBegin, false},
+		{SQLite, "END TRANSACTION", tile.TxEnd, false},
+		{SQLite, "CREATE TRIGGER t AFTER INSERT ON a BEGIN SELECT 1; END", tile.TxNone, true},
 	}
 	for _, c := range cases {
 		got := c.d.Classify(c.in)

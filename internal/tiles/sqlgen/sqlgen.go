@@ -18,8 +18,12 @@ type Dialect struct {
 	Mark  func(i int) string // the placeholder for the i-th argument, from 1
 	// Text renders a quoted column as the text the server sends, so a guard compares what the
 	// user saw and works on types without an equality operator.
-	Text   func(column string) string
-	Like   string // case-insensitive LIKE
+	Text func(column string) string
+	Like string // case-insensitive LIKE
+	// Escape follows LIKE where backslash is not already its escape character.
+	Escape string
+	// Column renders a field in a browse's select list. Nil quotes the field's name.
+	Column func(tile.Field) string
 	Begin  string
 	Family Family
 }
@@ -53,6 +57,9 @@ func (d Dialect) Select(ref tile.ObjectRef, l tile.Layout, q tile.BrowseQuery) (
 	cols := make([]string, len(l.Fields))
 	for i, f := range l.Fields {
 		cols[i] = d.Quote(f.Name)
+		if d.Column != nil {
+			cols[i] = d.Column(f)
+		}
 	}
 	var where []string
 	for _, c := range q.Filter {
@@ -115,7 +122,7 @@ func (b *builder) condition(l tile.Layout, c tile.Condition) (string, error) {
 		return col + " <> " + b.bind(c.Value), nil
 	case tile.OpContains:
 		like := "%" + likeEscape.Replace(string(c.Value.Raw)) + "%"
-		return b.d.Text(col) + " " + b.d.Like + " " + b.bind(tile.Text(like)), nil
+		return b.d.Text(col) + " " + b.d.Like + " " + b.bind(tile.Text(like)) + b.d.Escape, nil
 	case tile.OpNull:
 		return col + " IS NULL", nil
 	case tile.OpNotNull:

@@ -66,6 +66,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/version", s.version)
 	mux.HandleFunc("GET /api/tiles", s.tiles)
 	mux.HandleFunc("GET /api/profiles", s.profiles)
+	mux.HandleFunc("GET /api/files", s.files)
 	mux.HandleFunc("PUT /api/profiles/{name}", s.saveProfile)
 	mux.HandleFunc("DELETE /api/profiles/{name}", s.deleteProfile)
 	mux.HandleFunc("POST /api/conns/{name}/tree", s.tree)

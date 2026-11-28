@@ -17,6 +17,7 @@ import (
 	"github.com/arunksoman/tessera/internal/secrets"
 	"github.com/arunksoman/tessera/internal/tiles/mysql"
 	"github.com/arunksoman/tessera/internal/tiles/postgres"
+	"github.com/arunksoman/tessera/internal/tiles/sqlite"
 	"github.com/arunksoman/tessera/tile"
 )
 
@@ -33,7 +34,7 @@ func main() {
 		Version: version,
 		TTY:     term.IsTerminal(int(os.Stdin.Fd())),
 		// The compiled-in tiles, listed here so what ships is visible in one place.
-		Tiles: []tile.Tile{postgres.Tile{}, mysql.Tile{}},
+		Tiles: []tile.Tile{postgres.Tile{}, mysql.Tile{}, sqlite.Tile{}},
 	}
 	code := run(ctx, app, os.Args[1:])
 	stop()

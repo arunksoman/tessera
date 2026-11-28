@@ -81,8 +81,8 @@ func (c *Conn) CanInsertScript() bool {
 
 const (
 	loadRows = 500
-	// Both PostgreSQL and MySQL allow 65535 bound values in one statement.
-	loadValues = 60_000
+	// SQLite allows 32766 bound values in one statement, PostgreSQL and MySQL 65535.
+	loadValues = 30_000
 	// exportPage is the page size for stores paged by a server cursor. Other stores stream
 	// the whole object from one request.
 	exportPage = 10_000
