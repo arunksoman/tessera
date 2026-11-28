@@ -84,7 +84,27 @@ tess plugin install duckdb --force --from ...    # update to a newer release
 tess plugin remove duckdb
 ```
 
-Plugins live in `plugins/NAME/` in the config directory. `tess plugin list`, the TUI connection form, and the web app's connection picker show each plugin's version and stability beside its name.
+`tess plugin list`, the TUI connection form, and the web app's connection picker show each plugin's version and stability beside its name.
+
+## Where plugins are installed
+
+Each plugin gets its own folder in the `plugins` folder of the [config directory](/reference/configuration/#files):
+
+| OS | Folder |
+|---|---|
+| Linux | `~/.config/tessera/plugins/NAME/` |
+| macOS | `~/Library/Application Support/tessera/plugins/NAME/` |
+| Windows | `%AppData%\tessera\plugins\NAME\` |
+
+With `TESSERA_CONFIG_DIR` set, plugins go to `$TESSERA_CONFIG_DIR/plugins/NAME/` instead, so each config directory has its own set of plugins.
+
+The folder holds the binary, under the file name its publisher gave it, and `plugin.json`, the install record: version, source, signer, the pinned SHA-256, and the plugin's manifest. Leave both alone. A changed binary no longer matches its pinned hash, and tess refuses to start it; to change a plugin, reinstall it with `--force`.
+
+- **Installing** downloads into a temporary folder inside `plugins/` and renames it to `NAME/` only after every check passes, so a failed install leaves nothing behind.
+- **Reinstalling** with `--force` moves the old folder aside, puts the new one in place, then deletes the old one.
+- **Removing** with `tess plugin remove NAME` deletes the whole folder.
+
+Plugins are per user, like profiles; there is no system-wide plugin folder. To give a container or a CI job a plugin, install it there with the same command.
 
 ## The risk you take
 
