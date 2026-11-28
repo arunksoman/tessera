@@ -5,15 +5,37 @@ sidebar:
   order: 3
 ---
 
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
 ## Files
 
-Everything lives in one directory, created with mode `0700`:
+Everything tess keeps lives in one directory, the **config directory**. tess creates it, with mode `0700`, the first time it needs it. You never have to create the directory or any file in it yourself.
 
-| OS | Default directory |
+| OS | Default config directory |
 |---|---|
 | Linux | `$XDG_CONFIG_HOME/tessera`, usually `~/.config/tessera` |
 | macOS | `~/Library/Application Support/tessera` |
-| Windows | `%AppData%\tessera` |
+| Windows | `%AppData%\tessera`, usually `C:\Users\<you>\AppData\Roaming\tessera` |
+
+Set `TESSERA_CONFIG_DIR` to use another directory. It moves **everything**: `config.toml`, the vault, history, and installed plugins. Use it to keep separate setups, for example one per project or one for tests:
+
+```sh
+export TESSERA_CONFIG_DIR=$PWD/.tess
+tess profile add local --tile sqlite --set path=dev.db --set create=true
+tess tui local
+```
+
+<FileTree>
+- tessera/ the config directory
+  - config.toml settings, plugin settings, and profiles
+  - secrets.json encrypted passwords
+  - secrets.salt only when TESSERA_PASSPHRASE is used
+  - state.db history and audit log
+  - plugins/
+    - duckdb/ one folder per installed plugin
+      - tess-duckdb-linux-amd64 the plugin binary
+      - plugin.json install record with the pinned SHA-256
+</FileTree>
 
 | File | Contents |
 |---|---|
@@ -25,7 +47,15 @@ Everything lives in one directory, created with mode `0700`:
 
 ## config.toml
 
-tess writes this file itself when you add profiles or change settings, and you can edit it by hand.
+You do not need to create `config.toml`. tess writes it the first time you add a profile or change a setting, and works without one until then. To set something by hand, such as `allow_in_server`, open the existing file in the config directory and edit it; create it there only if it does not exist yet.
+
+<Aside type="caution" title="tess rewrites the whole file">
+Whenever tess saves a profile or a setting, it writes `config.toml` again from what it understood. **Comments are dropped, and so are keys tess does not know, including misspelled ones**: `allow_in_sever = true` is ignored without a warning, and gone after the next save. After a hand edit, check that tess sees it, for example with `tess profile list`.
+</Aside>
+
+- tess writes the file atomically, to `config.toml.tmp` and then renamed into place, with mode `0600`, so a crash never leaves it half written.
+- A TOML syntax error makes every command that reads the file fail with `config.toml:` and the parser's message, until you fix it.
+- Profile names, as in `[profiles.NAME]`, use letters, digits, `_`, `.`, and `-`.
 
 ```toml
 theme = "dark"          # TUI theme: "light", "dark", or empty to follow the terminal
