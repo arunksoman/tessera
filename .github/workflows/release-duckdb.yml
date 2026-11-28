@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - uses: actions/download-artifact@v4 # dependabot will pin to a SHA
+      - uses: actions/download-artifact@v8 # dependabot will pin to a SHA
         with:
           path: dist
           merge-multiple: true
