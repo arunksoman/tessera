@@ -483,6 +483,13 @@ func (in *Installer) Install(ctx context.Context, p *Pending) (Record, error) {
 	if err := version.Supports(in.tess(), h.Manifest.MinTess, h.Manifest.MaxTess); err != nil {
 		return rec, fmt.Errorf("plugin %s %w", p.Name, err)
 	}
+	// Stability is shown in every front-end, so only known words pass. The binary is pinned by
+	// its hash, so its manifest cannot change after this check.
+	switch h.Manifest.Stability {
+	case "", "alpha", "beta", "stable":
+	default:
+		return rec, fmt.Errorf("plugin %s reports stability %q; want alpha, beta, or stable", p.Name, h.Manifest.Stability)
+	}
 	rec.Manifest, rec.ConfigWarner = h.Manifest, h.Facets.ConfigWarner
 	if err := writeRecord(stage, rec); err != nil {
 		return rec, err

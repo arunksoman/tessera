@@ -133,6 +133,13 @@ tess plugin verify
 tess plugin remove redis
 ```
 
+DuckDB is an official plugin from this repository, released separately from tess because its driver needs cgo. DuckDB is linked into the plugin, so nothing else needs installing. See [plugins/duckdb](plugins/duckdb/README.md).
+
+```sh
+tess plugin install duckdb --from github:arunksoman/tessera@duckdb-v0.1.0
+tess profile add warehouse --tile duckdb --set path=warehouse.duckdb
+```
+
 To make `tess plugin install NAME` work without `--from`, map names to sources in `config.toml`:
 
 ```toml
@@ -155,7 +162,7 @@ tess plugin keygen --out acme.key     # prints the public key users trust
 tess plugin sign --key acme.key tessera-plugin.json
 ```
 
-Set `min_tess` in the descriptor and `MinTess` in the manifest to the oldest tess your plugin works with; tess refuses it on older releases. The descriptor format and protocol are in [design.md section 3](design-spec/design.md#3-plugin-system).
+Set `min_tess` in the descriptor and `MinTess` in the manifest to the oldest tess your plugin works with; tess refuses it on older releases. Set `Stability` in the manifest to `alpha`, `beta`, or `stable`; tess shows it beside your plugin's version and refuses any other value. The descriptor format and protocol are in [design.md section 3](design-spec/design.md#3-plugin-system).
 
 ### Secrets
 

@@ -219,6 +219,9 @@ type tileJSON struct {
 	Name  string          `json:"name"`
 	Style tile.Style      `json:"style"`
 	Form  []formFieldJSON `json:"form"`
+	// Version and Stability are a plugin's; built-in tiles have neither.
+	Version   string `json:"version,omitempty"`
+	Stability string `json:"stability,omitempty"`
 }
 
 type formFieldJSON struct {
@@ -234,7 +237,7 @@ func (s *Server) tiles(w http.ResponseWriter, r *http.Request) {
 	out := []tileJSON{}
 	for _, t := range s.api.e.Tiles() {
 		m := t.Manifest()
-		tj := tileJSON{ID: m.ID, Name: m.Name, Style: m.Style, Form: []formFieldJSON{}}
+		tj := tileJSON{ID: m.ID, Name: m.Name, Style: m.Style, Form: []formFieldJSON{}, Version: m.Version, Stability: m.Stability}
 		for _, f := range m.ConnForm.Fields {
 			tj.Form = append(tj.Form, formFieldJSON{f.Name, f.Label, f.Type, f.Required, f.Options, f.Default})
 		}

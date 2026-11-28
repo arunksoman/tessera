@@ -34,6 +34,9 @@ type Manifest struct {
 	// releases that would have worked.
 	MinTess string `json:"min_tess,omitempty"`
 	MaxTess string `json:"max_tess,omitempty"`
+	// Stability says how settled a plugin is: "alpha", "beta", or "stable". Hosts refuse any
+	// other value and show it beside the version. Built-in tiles leave it empty.
+	Stability string `json:"stability,omitempty"`
 }
 
 type Style struct {

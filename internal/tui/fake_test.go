@@ -56,7 +56,7 @@ func (db *fakeDB) ran(substr string) bool {
 type fakeTile struct{ db *fakeDB }
 
 func (f fakeTile) Manifest() tile.Manifest {
-	return tile.Manifest{ID: "fake", Name: "Fake", Style: tile.Style{Color: "lapis", Glyph: "F"}, ConnForm: tile.Form{Fields: []tile.FormField{
+	return tile.Manifest{ID: "fake", Name: "Fake", Version: "1.2.0", Stability: "beta", Style: tile.Style{Color: "lapis", Glyph: "F"}, ConnForm: tile.Form{Fields: []tile.FormField{
 		{Name: "host", Label: "Host", Type: "text", Required: true, Default: "localhost"},
 		{Name: "port", Label: "Port", Type: "int", Default: "1"},
 		{Name: "password", Label: "Password", Type: "secret"},

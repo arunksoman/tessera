@@ -81,6 +81,13 @@ func TestEditFormKeepsColor(t *testing.T) {
 	}
 }
 
+// A plugin's version and stability show beside its database type.
+func TestFormShowsPluginVersion(t *testing.T) {
+	a := start(t, newFakeDB(1), setup{})
+	a.see("New connection")
+	a.see("plugin 1.2.0 beta")
+}
+
 func TestFormValidates(t *testing.T) {
 	a := start(t, newFakeDB(1), setup{})
 	a.see("New connection")

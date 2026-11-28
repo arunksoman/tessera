@@ -46,6 +46,11 @@ func TestSplit(t *testing.T) {
 		{"sqlite trigger without end runs on", SQLite, "CREATE TRIGGER t BEGIN SELECT 1; SELECT 2", []string{"CREATE TRIGGER t BEGIN SELECT 1; SELECT 2"}},
 		{"sqlite begin is not a trigger", SQLite, "BEGIN; SELECT 1; END;", []string{"BEGIN", "SELECT 1", "END"}},
 		{"pg has no trigger bodies", Postgres, "CREATE TRIGGER t BEGIN SELECT 1; END", []string{"CREATE TRIGGER t BEGIN SELECT 1", "END"}},
+		{"duckdb comments do not nest", DuckDB, "SELECT /* /* */ 1; DROP TABLE t; /* */", []string{"SELECT /* /* */ 1", "DROP TABLE t"}},
+		{"duckdb dollar quote", DuckDB, "SELECT $a$ ; $$ ; $a$; SELECT 2", []string{"SELECT $a$ ; $$ ; $a$", "SELECT 2"}},
+		{"duckdb E string backslash", DuckDB, `SELECT E'a\';b'; SELECT 2`, []string{`SELECT E'a\';b'`, "SELECT 2"}},
+		{"duckdb plain string has no backslash escape", DuckDB, `SELECT 'a\'; SELECT 2`, []string{`SELECT 'a\'`, "SELECT 2"}},
+		{"duckdb backtick is not a quote", DuckDB, "SELECT `;`; SELECT 2", []string{"SELECT `", "`", "SELECT 2"}},
 		{"unterminated string", Postgres, "SELECT 'oops; SELECT 2", []string{"SELECT 'oops; SELECT 2"}},
 		{"empty", Postgres, " ; ;\n", nil},
 		{"comment only", Postgres, "-- nothing", nil},
@@ -121,6 +126,13 @@ func TestClassify(t *testing.T) {
 		{"keyword in identifier is ignored", Postgres, `SELECT "delete" FROM t`, "SELECT", tile.RiskNone, true},
 		{"second statement counts", Postgres, "SELECT 1; DROP TABLE t", "DROP", tile.RiskDestructive, false},
 
+		{"duckdb comment does not hide a drop", DuckDB, "SELECT /* /* */ 1; DROP TABLE t; /* */", "DROP", tile.RiskDestructive, false},
+		{"duckdb copy to is a write", DuckDB, "COPY t TO 'out.csv'", "COPY", tile.RiskWrite, false},
+		{"duckdb attach is a write", DuckDB, "ATTACH 'x.duckdb' AS x", "ATTACH", tile.RiskWrite, false},
+		{"duckdb install is a write", DuckDB, "INSTALL httpfs", "INSTALL", tile.RiskWrite, false},
+		{"duckdb from-first is not known to be read-only", DuckDB, "FROM t", "FROM", tile.RiskWrite, false},
+		{"duckdb summarize is not known to be read-only", DuckDB, "SUMMARIZE t", "SUMMARIZE", tile.RiskWrite, false},
+
 		{"sqlite begin immediate", SQLite, "BEGIN IMMEDIATE TRANSACTION", "BEGIN", tile.RiskNone, true},
 		{"sqlite pragma is a write", SQLite, "PRAGMA query_only = 0", "PRAGMA", tile.RiskWrite, false},
 		{"sqlite pragma read is still a write", SQLite, "PRAGMA table_info(t)", "PRAGMA", tile.RiskWrite, false},
@@ -183,7 +195,7 @@ func FuzzDialects(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		for _, d := range []Dialect{Postgres, MySQL, SQLite} {
+		for _, d := range []Dialect{Postgres, MySQL, SQLite, DuckDB} {
 			last := 0
 			c := d.Classify(in)
 			for _, s := range d.Split(in) {

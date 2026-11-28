@@ -1,0 +1,87 @@
+name: DuckDB plugin
+
+# Tests the DuckDB plugin on every platform it ships for, and builds its binaries. The plugin is
+# its own module in plugins/duckdb because its driver needs cgo; tess itself stays cgo-free.
+# The release workflow calls this with a version to keep the binaries.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      min_tess:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Ubuntu runners, so the binaries need the oldest glibc we can give them.
+          - { target: linux/amd64, os: ubuntu-22.04 }
+          - { target: linux/arm64, os: ubuntu-22.04-arm }
+          - { target: darwin/arm64, os: macos-latest }
+          - { target: darwin/amd64, os: macos-15-intel }
+          - { target: windows/amd64, os: windows-2025 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: plugins/duckdb
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: plugins/duckdb/go.mod
+          cache-dependency-path: plugins/duckdb/go.sum
+      # Windows links with the gcc preinstalled on the runner image, as duckdb-go's own CI
+      # does. DuckDB's prebuilt library needs a UCRT gcc of a matching age: MSYS2's gcc 16
+      # fails on emutls symbols, and older msvcrt MinGW builds fail on stdio symbols.
+      - if: runner.os == 'Windows'
+        run: gcc --version | head -1
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+      - name: Build
+        run: |
+          name=tess-duckdb-${TARGET/\//-}
+          [[ $RUNNER_OS == Windows ]] && name=$name.exe
+          go build -trimpath -buildvcs=false \
+            -ldflags "-s -w -X main.version=${VERSION:-dev} -X main.minTess=${MIN_TESS}" -o "$name" .
+          echo "BIN=$name" >>"$GITHUB_ENV"
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ inputs.version }}
+          MIN_TESS: ${{ inputs.min_tess }}
+      - if: inputs.version != ''
+        uses: actions/upload-artifact@v4 # dependabot will pin to a SHA
+        with:
+          name: ${{ env.BIN }}
+          path: plugins/duckdb/${{ env.BIN }}
+          if-no-files-found: error
+
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/duckdb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: plugins/duckdb/go.mod
+          cache-dependency-path: plugins/duckdb/go.sum
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: CGO_ENABLED=1 govulncheck ./...

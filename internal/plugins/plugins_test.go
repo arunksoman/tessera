@@ -442,6 +442,24 @@ func TestDescriptorTessBounds(t *testing.T) {
 	}
 }
 
+// A plugin's stability is shown to users, so only the known words are accepted, never
+// arbitrary text from the binary.
+func TestManifestStability(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "build")
+	os.WriteFile(bin, fakeBinary, 0o700)
+	in := &Installer{Root: t.TempDir()}
+	if _, err := install(t, in, "shaky", Options{From: bin, AllowUnsigned: true}); err == nil || !strings.Contains(err.Error(), "stability") {
+		t.Fatalf("install err = %v", err)
+	}
+	rec, err := install(t, in, "betadb", Options{From: bin, AllowUnsigned: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Manifest.Stability != "beta" {
+		t.Fatalf("stability = %q", rec.Manifest.Stability)
+	}
+}
+
 // The binary's own manifest is checked too, at install and again at each start, since the
 // descriptor could be wrong and tess could change after install.
 func TestManifestTessBounds(t *testing.T) {

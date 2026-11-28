@@ -70,6 +70,20 @@ func newField(spec tile.FormField, value string) *formField {
 	return f
 }
 
+// pluginLabel names a plugin's version and stability, such as " plugin 0.1.0 beta". Built-in
+// tiles have neither, so they get nothing.
+func pluginLabel(m *Model, id string) string {
+	t, ok := m.e.Tile(id)
+	if !ok {
+		return ""
+	}
+	man := t.Manifest()
+	if man.Version == "" && man.Stability == "" {
+		return ""
+	}
+	return " " + strings.Join(strings.Fields("plugin "+man.Version+" "+man.Stability), " ")
+}
+
 func (m *Model) tileIDs() []string {
 	var ids []string
 	for _, t := range m.e.Tiles() {
@@ -322,6 +336,9 @@ func (f *connForm) view(m *Model, width, height int) string {
 				shown = "(none)"
 			}
 			value = "< " + shown + " >"
+			if fl.spec.Name == fieldTile {
+				value += m.th.muted.Render(pluginLabel(m, fl.value))
+			}
 		case "bool":
 			value = "[ ]"
 			if fl.value == "true" {

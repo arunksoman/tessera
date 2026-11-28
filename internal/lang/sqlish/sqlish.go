@@ -30,6 +30,8 @@ var (
 	Postgres = Dialect{id: "sql-pg", dollarQuote: true, nestedComments: true}
 	MySQL    = Dialect{id: "sql-mysql", backslashString: true, hashComment: true, backtickIdent: true, dashNeedsSpace: true, execComments: true, delimiterCmd: true}
 	SQLite   = Dialect{id: "sql-sqlite", backtickIdent: true, bracketIdent: true, triggerBodies: true}
+	// DuckDB lexes as PostgreSQL does, except that its block comments do not nest.
+	DuckDB = Dialect{id: "sql-duckdb", dollarQuote: true}
 )
 
 // Language returns the dialect as a tile.Language.

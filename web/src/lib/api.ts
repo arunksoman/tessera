@@ -28,7 +28,15 @@ export type Files = {
 	roots: string[];
 	sep: string;
 };
-export type Tile = { id: string; name: string; style: { color?: string; glyph?: string }; form: FormField[] };
+export type Tile = {
+	id: string;
+	name: string;
+	style: { color?: string; glyph?: string };
+	form: FormField[];
+	/** A plugin's own version and how settled it is; built-in tiles have neither. */
+	version?: string;
+	stability?: 'alpha' | 'beta' | 'stable';
+};
 
 export type Profile = {
 	name: string;
