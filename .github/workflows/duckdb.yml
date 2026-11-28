@@ -30,7 +30,7 @@ jobs:
           - { target: linux/arm64, os: ubuntu-22.04-arm }
           - { target: darwin/arm64, os: macos-latest }
           - { target: darwin/amd64, os: macos-15-intel }
-          - { target: windows/amd64, os: windows-latest }
+          - { target: windows/amd64, os: windows-2025 }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -44,17 +44,11 @@ jobs:
         with:
           go-version-file: plugins/duckdb/go.mod
           cache-dependency-path: plugins/duckdb/go.sum
-      # DuckDB's Windows library is built against the UCRT, so it links only with a UCRT gcc.
+      # Windows links with the gcc preinstalled on the runner image, as duckdb-go's own CI
+      # does. DuckDB's prebuilt library needs a UCRT gcc of a matching age: MSYS2's gcc 16
+      # fails on emutls symbols, and older msvcrt MinGW builds fail on stdio symbols.
       - if: runner.os == 'Windows'
-        id: msys2
-        uses: msys2/setup-msys2@v2 # dependabot will pin to a SHA
-        with:
-          msystem: UCRT64
-          install: mingw-w64-ucrt-x86_64-gcc
-      - if: runner.os == 'Windows'
-        shell: pwsh
-        working-directory: .
-        run: Add-Content $env:GITHUB_PATH "${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin"
+        run: gcc --version | head -1
       - name: gofmt
         if: runner.os == 'Linux'
         run: test -z "$(gofmt -l .)"
