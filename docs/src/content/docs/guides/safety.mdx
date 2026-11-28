@@ -1,0 +1,94 @@
+---
+title: Safety
+description: What Tessera asks before running, production connections, read-only mode, edit conflicts, and the audit log.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Screenshot from '../../../components/Screenshot.astro';
+
+Tessera assumes that one wrong statement on the wrong database is the most expensive mistake you can make with a database client. Every front-end sends statements through the same safety gate in the engine, so these rules hold in the CLI, the TUI, and the web app alike.
+
+## How statements are classified
+
+Before anything runs, tess splits the script into statements and classifies each one, using the database's own lexer, which understands its comments, quoting, and dollar-quoted or delimited bodies:
+
+| Class | Statements |
+|---|---|
+| **Read** | `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` (without `ANALYZE` on a write), `VALUES`, `TABLE`, `WITH` queries that only read, and plain `BEGIN`, `COMMIT`, and `ROLLBACK` |
+| **Write** | `INSERT`, `UPDATE ... WHERE`, `DELETE ... WHERE`, `MERGE`, `REPLACE`, `SELECT ... INTO`, `SELECT ... FOR UPDATE`, `CREATE`, `ALTER` without `DROP`, `GRANT`, `CALL`, and every statement tess does not recognise |
+| **Destructive** | `DROP`, `TRUNCATE`, `ALTER ... DROP`, and `UPDATE` or `DELETE` without `WHERE`, including inside a CTE or `EXPLAIN ANALYZE` |
+
+Unknown statements count as writes: the classifier is default-deny. A write hidden in a CTE, such as `WITH gone AS (DELETE FROM t RETURNING *) SELECT ...`, is found, because tess scans every word, not only the first.
+
+## What asks for confirmation
+
+| Connection | Read | Write | Destructive |
+|---|---|---|---|
+| Ordinary | runs | runs | asks: type `yes` |
+| Tagged `--env production` | runs | asks: type the connection's name | asks: type the connection's name |
+| `--read-only` | runs | refused | refused |
+
+The whole script is checked **before its first statement runs**. If statement 7 of 10 needs confirmation, you are asked before statement 1, and declining runs nothing.
+
+<Screenshot name="web-confirm" alt="The confirmation dialog for a DROP statement on a production connection, asking to type billing-prod" />
+
+In the CLI, a prompt appears on the terminal. When nobody can answer, because the SQL came from standard input or there is no terminal, the script is refused with exit code 3. `--yes` answers every prompt and prints each one it answered.
+
+## Production connections
+
+Tag a connection as production when you add it:
+
+```sh
+tess profile add billing --tile postgres --host db.prod.example.com --user ops --database billing \
+  --env production --password-stdin
+```
+
+Production connections confirm every write, not only destructive ones, and the confirmation needs the connection's name typed out, so muscle memory cannot click through it. The TUI shows a coloured status line with the environment's name. In the web app, give the connection a colour too, such as red, so its tabs and footer stand out.
+
+## Read-only connections
+
+`--read-only` (or *Read-only* in the web form) refuses every statement that is not a read, before it is sent. tess also asks the server to enforce it: PostgreSQL and MySQL sessions start read-only transactions, and SQLite sets `query_only`.
+
+<Aside type="caution">
+Read-only mode is a guardrail, not a security boundary. A statement can call a function that writes, and a session can turn server read-only off again. For a hard guarantee, connect as a database role that has no write privileges.
+</Aside>
+
+## Edits and structure changes
+
+Edits in the grid and changes in the table designer never run directly. They become a **plan**: the exact statements, shown to you before anything runs. The text you preview is the text that runs; tess checks a hash of the plan when you apply it.
+
+- Edits run in one transaction. Each `UPDATE` matches the row by its key and by the values you saw, so if the row changed since you loaded it, the update matches nothing, everything rolls back, and you see a conflict.
+- Structure changes say whether they are atomic. MySQL and MariaDB commit each DDL statement on its own, so the preview warns you that a failure halfway leaves earlier steps applied.
+- Applying on a production connection asks for the connection's name.
+- Rename, truncate, and drop from the tree's menu ask you to type the connection's name.
+
+## Cancelling
+
+`Esc` in the TUI and web app, and `Ctrl+C` or `--timeout` in the CLI, stop the statement **on the server**, not only in tess. PostgreSQL gets a cancel request; MySQL and MariaDB get `KILL QUERY` on a second connection, because dropping the client's socket alone leaves the statement running.
+
+## History and audit
+
+Every statement you run goes into the connection's history, redacted so that passwords in statements like `CREATE USER ... PASSWORD '...'` are removed first. Turn history off per connection with `--no-history`.
+
+Every write also goes into the audit log, with the operating system user, the connection, the redacted statement, and the number of rows changed, even when history is off. Each entry carries the hash of the one before it:
+
+```sh
+tess audit verify
+# audit log intact: 1832 entries
+```
+
+The chain shows that entries were changed or removed. It cannot stop someone with access to your files from rewriting the whole log; forward it elsewhere if you need that.
+
+## Untrusted data
+
+Database content is treated as hostile:
+
+- The web app renders every value as text, never as HTML, under a strict Content Security Policy.
+- The CLI's table output strips terminal control characters, so a value cannot rewrite your terminal.
+- CSV exports neutralize spreadsheet formulas by default.
+- MySQL connections never allow `LOAD DATA LOCAL`, so a malicious server cannot read your files.
+- SQLite and DuckDB files open with extensions off, and SQLite runs in defensive mode with `trusted_schema` off.
+
+See the [security model](/project/security/) for the full threat model.

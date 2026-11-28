@@ -1,0 +1,22 @@
+{
+  "name": "tessera-docs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.10",
+    "@astrojs/starlight": "0.43.2",
+    "@iconify-json/logos": "1.2.21",
+    "astro": "7.4.13",
+    "astro-mermaid": "2.2.1",
+    "mermaid": "12.4.0",
+    "sharp": "0.35.5"
+  }
+}

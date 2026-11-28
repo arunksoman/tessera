@@ -1,0 +1,84 @@
+---
+title: Run tess serve on a server
+description: Serve the web app beyond localhost with TLS or a reverse proxy, and run it in the official container image.
+sidebar:
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+By default `tess serve` listens on `127.0.0.1` and only your own machine can reach it. You can also run it on a server and open it from a browser elsewhere.
+
+<Aside type="caution" title="Single user for now">
+There are no user accounts yet. Whoever opens the one-time sign-in link first gets the session, with every connection the server's profiles can reach. Treat the link, and any log that prints it, as a secret until it has been used.
+</Aside>
+
+## Listening beyond localhost
+
+Any address other than loopback needs encryption: either a certificate, or a TLS-terminating proxy in front. Browsers must also reach tess by a name you allow, because requests with any other `Host` header are refused. That blocks DNS rebinding attacks.
+
+```sh
+# tess terminates TLS itself
+tess serve --addr 0.0.0.0:8443 --tls-cert cert.pem --tls-key key.pem \
+  --allow-host tess.example.com --no-browser
+
+# a proxy such as Caddy or nginx terminates TLS and forwards to tess
+tess serve --addr 10.0.0.5:8080 --behind-proxy --allow-host tess.example.com --no-browser
+```
+
+| Flag | Meaning |
+|---|---|
+| `--addr HOST:PORT` | Where to listen. Port `0` picks a free port. Default `127.0.0.1:0`. |
+| `--tls-cert FILE`, `--tls-key FILE` | Serve HTTPS with this PEM certificate and key. |
+| `--behind-proxy` | A TLS-terminating proxy sits in front, so plain HTTP on a non-loopback address is allowed. |
+| `--allow-host NAME` | Also accept `NAME` in the `Host` header. Repeat for each name. |
+| `--no-browser` | Print the sign-in link without opening a browser. |
+
+tess prints the one-time link on standard output. Open it once from your browser.
+
+The server sets `SameSite=Strict`, `HttpOnly` cookies, checks the origin of every state-changing request, and sends a strict Content Security Policy that allows no inline script or style but its own.
+
+<Aside type="note">
+SQLite file fields and the file picker are answered only by a loopback server, because on a shared server a file path would reach the server's disk.
+</Aside>
+
+## Container image
+
+`ghcr.io/arunksoman/tessera` runs `tess serve` on a distroless base as a non-root user, for amd64 and arm64. `:latest` follows releases, `:__TESS_VERSION__` pins one, and `:edge` follows `main`. Every image is scanned with Trivy before it is published, and carries an SBOM and a build provenance attestation:
+
+```sh
+gh attestation verify oci://ghcr.io/arunksoman/tessera:latest -R arunksoman/tessera
+```
+
+Inside the container `tess serve` listens on `0.0.0.0:8080`, so it still needs TLS or `--behind-proxy`, and an `--allow-host`. There is no OS keychain, so pass `TESSERA_PASSPHRASE` or mount a key file and set `TESSERA_MASTER_KEY_FILE`. Profiles, secrets, and history live in the `/data` volume.
+
+```sh
+docker volume create tess-data
+
+# Add a profile; the password comes from standard input.
+printf '%s\n' "$DB_PASSWORD" | docker run --rm -i -v tess-data:/data -e TESSERA_PASSPHRASE \
+  ghcr.io/arunksoman/tessera profile add app --tile postgres --host db.example.com \
+  --user app --database app --password-stdin
+
+# Serve it, locked down.
+docker run -d --name tess --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -p 127.0.0.1:8443:8443 -v tess-data:/data -v "$PWD/tls:/tls:ro" -e TESSERA_PASSPHRASE \
+  ghcr.io/arunksoman/tessera serve --addr 0.0.0.0:8443 --no-browser \
+  --tls-cert /tls/cert.pem --tls-key /tls/key.pem --allow-host localhost
+
+docker logs tess    # prints the one-time sign-in link
+```
+
+The container's log holds the sign-in link, so keep it private until the link is used. To sign in again, restart the container for a new link.
+
+Build the image yourself with `docker buildx build -t tess .` from the repository root.
+
+## Plugins on a server
+
+`tess serve` loads no installed plugins unless you allow it, because a plugin runs with the server's permissions:
+
+```toml
+# config.toml
+[plugins]
+allow_in_server = true
+```

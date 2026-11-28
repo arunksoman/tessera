@@ -1,0 +1,100 @@
+---
+title: Tessera
+description: One open-source database client for PostgreSQL, MySQL, MariaDB, SQLite, and plugins, from the command line, the terminal, or the browser.
+template: splash
+hero:
+  title: Every database, one mosaic.
+  tagline: Tessera is an open-source database client. Query, browse, edit, and redesign PostgreSQL, MySQL, MariaDB, SQLite, and DuckDB from one small binary, in the shell, the terminal, or the browser, with guardrails that stop the mistakes you cannot undo.
+  image:
+    alt: The Tessera mosaic logo
+    light: ../../assets/mosaic-light.svg
+    dark: ../../assets/mosaic-dark.svg
+  actions:
+    - text: Get started
+      link: /tessera/start/quick-start/
+      icon: right-arrow
+    - text: Install
+      link: /tessera/start/install/
+      variant: secondary
+    - text: Build a plugin
+      link: /tessera/plugins/overview/
+      variant: minimal
+      icon: puzzle
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import Screenshot from '../../components/Screenshot.astro';
+
+<div class="home-shot">
+	<Screenshot name="web-browse" alt="The Tessera web app browsing the film table of the Sakila sample database" />
+</div>
+
+<div class="tile-row not-content">
+	<div><span class="glyph lapis">P</span><span>PostgreSQL<small>14 and newer</small></span></div>
+	<div><span class="glyph ochre">M</span><span>MySQL<small>8.0 and newer</small></span></div>
+	<div><span class="glyph terracotta">M</span><span>MariaDB<small>10.11 and newer</small></span></div>
+	<div><span class="glyph verdigris">S</span><span>SQLite<small>any file</small></span></div>
+	<div><span class="glyph porphyry">D</span><span>DuckDB<small>official plugin</small></span></div>
+</div>
+
+## Three front-ends, one engine
+
+Every front-end goes through the same engine, so the safety checks, history, and audit log behave the same wherever you work.
+
+<Tabs>
+	<TabItem label="Web app" icon="laptop">
+		`tess serve` opens a fast, keyboard-friendly app in your browser: a schema tree, SQL tabs with completion, a virtualized grid, inline editing with a preview of the exact SQL, and a table designer.
+		<Screenshot name="web-sql" alt="A SQL tab running a grouped query with results below" />
+	</TabItem>
+	<TabItem label="Terminal UI" icon="seti:shell">
+		`tess tui` gives you the same tree, editor, and grid in any terminal, with a command palette, history, and light and dark themes. It works over SSH.
+		<Screenshot name="tui-sql" alt="The Tessera terminal UI with a query and its results" />
+	</TabItem>
+	<TabItem label="Command line" icon="seti:powershell">
+		`tess query` streams results as a table, CSV, or JSON, so it fits in scripts and pipelines. Ctrl+C cancels the statement on the server.
+
+		```sh
+		tess query -c app "SELECT id, total FROM orders WHERE placed_at > now() - interval '1 day'"
+		tess query -c app -f csv "SELECT * FROM orders" > orders.csv
+		tess query -c app < migrate.sql
+		```
+	</TabItem>
+</Tabs>
+
+## Why Tessera
+
+<CardGrid>
+	<Card title="Guardrails, not hope" icon="warning">
+		`DROP`, `TRUNCATE`, and `UPDATE` or `DELETE` without `WHERE` ask first. Production connections make you type their name. A whole script is checked before its first statement runs.
+	</Card>
+	<Card title="Edits you can read" icon="pencil">
+		Change cells in the grid, then preview the exact SQL. Edits run in one transaction, and if someone changed the row since you read it, nothing is applied.
+	</Card>
+	<Card title="Cancel means cancel" icon="close">
+		Cancelling stops the work on the server, not only in the client. Results stream, so a billion-row table never fills your memory.
+	</Card>
+	<Card title="Lossless values" icon="seti:json">
+		Big integers and decimals keep every digit, in the grid and in exports. Nothing passes through a float.
+	</Card>
+	<Card title="Secrets stay secret" icon="seti:lock">
+		Passwords live in an encrypted vault keyed from your OS keychain, never in flags or config files, and are redacted from history and logs.
+	</Card>
+	<Card title="Open to any database" icon="puzzle">
+		Other databases plug in as separate programs over a small JSON protocol. Plugins are signed, hash-pinned, and checked before every start.
+	</Card>
+</CardGrid>
+
+## Light or dark, your call
+
+Every screen follows your system theme, and remembers a manual choice. So do the screenshots in these docs: switch the theme at the top of the page and watch them change.
+
+<Screenshot name="web-structure" alt="The table designer showing the columns of the film table" />
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Quick start" description="Install tess, add a connection, and run your first query in five minutes." href="/tessera/start/quick-start/" />
+	<LinkCard title="Web app guide" description="Connections, the tree, SQL tabs, browsing, editing, structure, import and export." href="/tessera/guides/web/" />
+	<LinkCard title="Safety" description="What asks for confirmation, read-only mode, production tags, and the audit log." href="/tessera/guides/safety/" />
+	<LinkCard title="Build a plugin" description="Add a new database to Tessera with the tile contract and the conformance suite." href="/tessera/plugins/overview/" />
+</CardGrid>

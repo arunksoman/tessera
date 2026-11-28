@@ -1,0 +1,138 @@
+---
+title: 'Tutorial: write a plugin'
+description: Build a small Tessera plugin in Go, test it in and out of process, and install it into tess.
+sidebar:
+  order: 2
+---
+
+import { Code, Steps, Aside, FileTree } from '@astrojs/starlight/components';
+import mainGo from '../../../../examples/tess-kv/main.go?raw';
+import testGo from '../../../../examples/tess-kv/main_test.go?raw';
+
+This tutorial builds `tess-kv`, a plugin for a tiny key-value store kept in a JSON file. It is small enough to read in one sitting, yet it touches every required part of the contract: a manifest and connection form, connections and sessions, streamed results, a language for the safety gate, and an object tree. The complete, tested source lives in [`docs/examples/tess-kv`](https://github.com/arunksoman/tessera/tree/main/docs/examples/tess-kv).
+
+Its language has five commands, one per line:
+
+| Command | Class | Result |
+|---|---|---|
+| `GET key` | read | the key and its value |
+| `KEYS` | read | every key and value |
+| `SET key value...` | write | 1 row affected |
+| `DEL key` | write | 0 or 1 rows affected |
+| `CLEAR` | destructive | every key removed |
+
+<Steps>
+
+1. **Create a module** that depends on Tessera. Only the standard-library-only packages `tile`, `tile/plugin`, and `tile/tiletest` are for plugins; everything under `internal` is private to tess.
+
+	```sh
+	mkdir tess-kv && cd tess-kv
+	go mod init example.com/tess-kv
+	go get github.com/arunksoman/tessera@v__TESS_VERSION__
+	```
+
+	<FileTree>
+	- tess-kv/
+	  - go.mod
+	  - main.go the plugin
+	  - main_test.go its tests
+	</FileTree>
+
+2. **Write `main`.** `plugin.Serve` reads requests from standard input, calls your tile, and writes responses to standard output until the host closes the pipe.
+
+	```go
+	func main() { plugin.Serve(Tile{}) }
+	```
+
+	<Aside type="caution">
+	Standard output belongs to the protocol. Never print to it. tess keeps the last 4 KiB of your standard error and shows it if the plugin fails to start, so write startup errors there.
+	</Aside>
+
+3. **Describe the tile.** The manifest names the tile, declares the contract version it speaks, and describes the connection form that the CLI's `--set` flags, the TUI form, and the web form are all built from. `ID` must equal the name users install the plugin under.
+
+	```go
+	func (Tile) Manifest() tile.Manifest {
+		return tile.Manifest{
+			ID: "kv", Name: "Key-value file", APIVersion: tile.APIVersion,
+			Version: version, MinTess: "0.5.0", Stability: "alpha",
+			Style: tile.Style{Color: "porphyry", Glyph: "K"},
+			ConnForm: tile.Form{Fields: []tile.FormField{
+				{Name: "path", Label: "Store file", Type: "file", Required: true},
+			}},
+		}
+	}
+	```
+
+	Field types are `text`, `int`, `bool`, `enum` (with `Options`), `secret`, and `file`. A `secret` field is never stored in the profile: the host keeps it in the vault, and you read it with `env.Secret(ctx, "password")` in `Open`.
+
+4. **Open connections and sessions.** `Open` validates the form values and returns a `Conn`, usually a connection pool. `Session` returns one physical connection that runs one statement at a time. Respect `SessionOptions.ReadOnly`: tess has already refused writes in its gate, but the tile should enforce it too where the database can.
+
+5. **Stream results.** `Execute` returns a `ResultStream`. Each call to `Next` returns one frame, in order: a `Schema` with the fields, any number of `Batch` frames, then `Done`, then `io.EOF`. A write may send `Done` alone with `RowsAffected` and `HasAffected` set. A real database tile fetches rows lazily in `Next`, so a huge result never sits in memory, and stops the server's work when the context is cancelled or the stream is closed early.
+
+6. **Classify the language.** `Language` is what the safety gate trusts. `Split` returns the byte span of each statement in a script, `Classify` says whether a statement reads, writes, or destroys, and `Redact` removes secrets before history stores the text. Classify default-deny: anything unknown is a write.
+
+	```go
+	func (language) Classify(stmt string) tile.Classification {
+		verb := ""
+		if words := strings.Fields(stmt); len(words) > 0 {
+			verb = strings.ToUpper(words[0])
+		}
+		switch verb {
+		case "GET", "KEYS":
+			return tile.Classification{Verb: verb, ReadOnly: true}
+		case "CLEAR":
+			return tile.Classification{Verb: verb, Risk: tile.RiskDestructive, Reason: "CLEAR removes every key"}
+		}
+		return tile.Classification{Verb: verb, Risk: tile.RiskWrite, Reason: verb + " changes data"}
+	}
+	```
+
+	The `Reason` is what users read in a confirmation prompt. If your language has transactions, set `Tx` on `BEGIN`, `COMMIT`, and `ROLLBACK`; if it defines objects, set `Schema` so front-ends refresh the tree.
+
+7. **List objects.** `Tree().Children` returns one page of nodes under a parent, with a cursor for the next page. Each node has a ref, a path of plugin-defined `kind` and `name` segments, so the tree can be shaped however your database is. Return `nil` from `Tree` if there is nothing to list.
+
+8. **Test it** in process and, with `tiletest.OutOfProcess`, across the real protocol. `TestMain` lets the test binary serve the plugin when `OutOfProcess` starts it again.
+
+	```sh
+	go test ./...
+	```
+
+9. **Install it into tess** and use it like any database. A bare binary installs with `--allow-unsigned`; the name you install under must equal the manifest's `ID`.
+
+	```sh
+	go build -ldflags "-X main.version=0.1.0" -o tess-kv .
+	tess plugin install kv --yes --allow-unsigned --from ./tess-kv
+	tess profile add notes --tile kv --set path=$PWD/notes.json
+	printf 'SET a 1\nSET b two words\nKEYS\n' | tess query -c notes
+	```
+
+	```
+	1 rows affected
+	1 rows affected
+	 key | value
+	-----+----------
+	 a   | 1
+	 b   | two words
+	(2 rows)
+	```
+
+	The safety gate already applies to your language:
+
+	```sh
+	tess query -c notes "CLEAR"
+	# tess: refused: this statement needs confirmation: CLEAR removes every key
+	```
+
+</Steps>
+
+## The complete plugin
+
+<Code code={mainGo} lang="go" title="main.go" />
+
+<Code code={testGo} lang="go" title="main_test.go" />
+
+## Where to go from here
+
+- Add facets as your database supports them: `Browser` for paging through records with sort and filter, `Editor` for inline edits, `KeyDescriber` for key marks, `Loader` for import, `Explainer`, and `Designer`. See [The tile contract](/plugins/contract/).
+- Run the [conformance suite](/plugins/testing/) if your database speaks SQL.
+- [Publish](/plugins/publishing/) a signed release so users can install it with `tess plugin install`.

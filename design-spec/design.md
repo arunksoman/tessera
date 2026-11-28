@@ -684,6 +684,18 @@ Build-time only: `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sveltejs/vite-pl
 
 Excluded: Tailwind (design tokens in CSS variables suffice), component libraries, icon libraries (a small inline SVG set), and date libraries (`Intl`).
 
+### Documentation site
+
+`docs/` is built into static pages for GitHub Pages and ships nothing in `tess`.
+
+| Build-time | Why |
+|---|---|
+| `astro`, `@astrojs/starlight` | Static docs with search, sidebar, and light and dark themes out of the box; Fumadocs' Astro integration was at 0.3 with no docs and needs React |
+| `@astrojs/markdown-remark` | Starlight's required peer, and the processor that runs the site's remark plugin for versions and links |
+| `sharp` | Astro's image service: screenshots become responsive WebP |
+| `astro-mermaid`, `mermaid` | Diagrams written as text, rendered in the reader's theme |
+| `@iconify-json/logos` | Database and tool logos for architecture diagrams, a subset bundled so pages fetch no icons at run time |
+
 ### Tests only
 
 Standard `testing`, `docker compose`, `benchstat`, `hyperfine`. No assertion framework.

@@ -1,0 +1,164 @@
+---
+title: The web app
+description: Connections, the object tree, SQL tabs, browsing and editing tables, the table designer, and import and export in tess serve.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import Screenshot from '../../../components/Screenshot.astro';
+
+`tess serve` runs Tessera's web app from the `tess` binary. Nothing is installed in the browser and nothing leaves your machine: the server listens on `127.0.0.1` by default and the app talks only to it.
+
+```sh
+tess serve                       # 127.0.0.1 on a free port, opens your browser
+tess serve --addr 127.0.0.1:8080
+tess serve --no-browser          # only print the link
+```
+
+## Signing in
+
+tess opens your default browser on a link holding a one-time token, and prints the same link. Opening it exchanges the token for a session cookie, and the link stops working. To sign in another browser, restart `tess serve` for a new link.
+
+Installed [plugins](/guides/plugins/) are not loaded by `tess serve` unless you allow it in `config.toml`; tess prints how many it skipped.
+
+## Connections
+
+The start page lists your saved connections and the ones you opened recently. Click a connection to open a SQL tab on it, or the pencil to edit it.
+
+<Screenshot name="web-start" alt="The start page with four saved connections, each marked with a colour" />
+
+**New connection** asks for the database type, then shows that database's form. Fields are grouped, TLS options are collapsed under *TLS and certificates* with the current mode shown, and the password field has a reveal button. File fields, such as a SQLite path, get a file picker on a local server, which can also name a new file to create.
+
+<Screenshot name="web-connection-form" alt="The new connection form for PostgreSQL" />
+
+Under **Save as**:
+
+- **Connection name** is the profile name, also used by `tess query -c` and `tess tui`.
+- **Colour** marks the connection's card, sidebar entry, tabs, and footer. Use it as a reminder, for example red for production. Colours do not change behaviour.
+- **Read-only** refuses writes. See [Safety](/guides/safety/#read-only-connections).
+- **Keep no query history** turns history off for this connection. Writes are still audited.
+
+Environment tags, which make production connections confirm every write, are set with `tess profile add --env production` or in the TUI. The web app keeps a profile's tag when you edit it.
+
+## The sidebar and tree
+
+The sidebar lists connections; expand one to see its object tree. For PostgreSQL that is schemas, then tables, views, and routines; for MySQL, databases; for SQLite, the tables and views of the file. Routines show their parameter types. The hover buttons on a connection open a new query tab, edit it, or delete it. Type in **Filter connections** to narrow a long list.
+
+Click a table or view to browse it. Right-click a node, or press the context menu key or `Shift+F10` on it, for everything else:
+
+<Screenshot name="web-context-menu" alt="The context menu on the film table: open data, structure, SQL create, export, import, rename, truncate, drop" />
+
+| Item | What it does |
+|---|---|
+| Open data | Browse the rows, as clicking does |
+| Structure… | Open the [table designer](#the-table-designer) (*View structure* for views and read-only connections) |
+| SQL: Create | Show the statement that creates the object as it is now, to read or copy |
+| Export… | Download every row as CSV, JSON, JSON Lines, or SQL `INSERT` statements |
+| Import data… | Load a CSV, JSON, or JSON Lines file into the table |
+| Rename…, Truncate…, Drop… | Change or remove the object, after a typed confirmation |
+| Copy name, Copy signature, Copy type | Copy text to the clipboard |
+| Refresh | Reload this part of the tree, for example after another client created a table |
+
+Statements that change the schema, such as `CREATE TABLE`, refresh the tree on their own.
+
+## SQL tabs
+
+A SQL tab has an editor, a toolbar, and results below. Press `Alt+T` for a new tab on the current connection and `Alt+W` to close one.
+
+<Screenshot name="web-sql" alt="A SQL tab with a grouped query and its results" />
+
+| Keys | Action |
+|---|---|
+| `Ctrl+Enter` or `F5` | Run the whole script, or only the selection |
+| `Ctrl+Shift+Enter` or `Shift+F5` | Run only the statement at the cursor |
+| `Esc` | Cancel the running statement, on the server |
+| `Ctrl+Space` | Complete keywords, tables, and columns |
+| `Ctrl+Shift+F` | Format the selection, or the whole script |
+| `Ctrl+F` | Find and replace |
+
+Use `Cmd` in place of `Ctrl` on macOS. An empty tab shows this list.
+
+**Results.** Each statement that returns rows gets a result tab. Rows stream into the grid as they arrive, with a count and a cancel button while it runs. A result stops at 50,000 rows or 64 MiB, then the statement is cancelled and the result is marked as truncated; use [`tess query`](/guides/cli/) or an export to get everything. Statements that change rows report how many.
+
+**Export a result** with the *Export result* button, or by right-clicking the grid, as CSV, JSON, or JSON Lines. Numbers keep every digit, and CSV neutralizes spreadsheet formulas.
+
+**Transactions.** *Auto commit* commits each statement. Switch to *Manual commit* to open a transaction: the tab then shows *transaction open* with **Commit** and **Rollback** buttons, and your statements stay uncommitted until you choose. On MySQL and MariaDB, DDL statements such as `CREATE TABLE` commit an open transaction by themselves, as they do in every client.
+
+**Safety.** Statements that need confirmation open a dialog before anything runs. See [Safety](/guides/safety/).
+
+## Browsing a table
+
+Click a table or view in the tree. Rows load page by page as you scroll, using keyset paging on the primary key where there is one, so deep pages stay fast.
+
+<Screenshot name="web-browse" alt="Browsing the film table with typed column headers and key marks" />
+
+- **Headers** show each column's declared type. A key icon marks the primary key, and a link icon marks foreign keys.
+- **Sort** by clicking a header, or from its context menu. Sorting runs on the server.
+- **Filter** with the bar above the grid: pick a column, an operator (contains, `=`, `≠`, `<`, `≤`, `>`, `≥`, is null, is not null), and a value, then *Add filter*. Filters combine with AND and run on the server. Remove one with its ✕.
+- **Follow a foreign key** with the link button in a cell. It opens the row it refers to in a new tab, filtered to that row.
+- **Right-click a cell** to copy its value (`Ctrl+C`), the row as tab-separated text or JSON, or the column name; to view a long value in full; or to edit it, set it to NULL, or revert a pending change.
+
+The status bar shows how many rows are loaded and the table's approximate size.
+
+## Editing rows
+
+Tables with a primary key can be edited; views, keyless tables, and read-only connections say why they cannot.
+
+<Steps>
+
+1. Double-click a cell, or select it and press `Enter`. Type the new value and press `Enter`, or click **NULL** to set NULL. `Esc` cancels.
+2. Changed cells are highlighted and the toolbar counts pending changes. Keep editing other cells and rows, or click **Discard** to drop them all.
+3. Click **Preview and apply…** to see the exact SQL that will run.
+4. Click **Apply**. The changes run in one transaction.
+
+</Steps>
+
+<Screenshot name="web-edit-preview" alt="The apply dialog showing the UPDATE statement for one edited cell" />
+
+Each `UPDATE` matches the row by its primary key *and* by the values you saw. If someone else changed the row since you loaded it, the update matches no row, everything is rolled back, and you see a conflict instead of overwriting their work. On a production connection, applying asks you to type the connection's name.
+
+## The table designer
+
+**Structure…** on a table opens its design, with tabs for **Columns**, **Indexes**, **Relations** (foreign keys), and **Triggers**.
+
+<Screenshot name="web-structure" alt="The table designer showing the columns of the film table" />
+
+- Add, rename, change, and drop columns: type, nullability, default, comment, and collation where the database has one.
+- Add and drop indexes, unique keys, and the primary key.
+- Add and drop foreign keys, with their `ON UPDATE` and `ON DELETE` actions.
+- Add and drop triggers.
+
+Changes stay pending until you review them. The preview shows each generated statement in order and says whether they run atomically. PostgreSQL and SQLite run DDL inside a transaction, so a failure leaves nothing half done; MySQL and MariaDB commit each DDL statement on its own, and the preview warns you. SQLite cannot change a column's type, nullability, or default, or add a key, without rebuilding the table, so the designer refuses those changes for now.
+
+## Import and export
+
+**Export…** on a table downloads every row in the background, streamed from the server, so large tables do not fill the browser's memory:
+
+| Format | Contents |
+|---|---|
+| CSV | A header row, then one line per row. NULL is an empty field. |
+| JSON | One array of objects. Numbers stay exact. |
+| JSON Lines | One object per line, easy to stream. |
+| SQL | `INSERT` statements, 100 rows each, to load into another database. |
+
+CSV export neutralizes formulas by default, so a spreadsheet cannot run a cell starting with `=`, `+`, `-`, or `@`.
+
+**Import data…** loads a CSV file with a header row, a JSON array of objects, or JSON Lines into the table. Header names or object keys must match the table's columns; columns left out get their defaults. Choose whether empty CSV fields load as NULL. The whole file loads in one transaction and passes the safety gate like any other write, so a failed row leaves the table unchanged.
+
+## Themes and keys
+
+The **Theme** menu at the top right chooses *System*, *Light*, or *Dark*; the choice is remembered and applied before the page paints, so it never flashes.
+
+| Keys | Action |
+|---|---|
+| `Alt+T` | New SQL tab |
+| `Alt+W` | Close the tab |
+| `Alt+]`, `Alt+[` | Next, previous tab |
+| `Ctrl+Enter` | Run |
+| `Esc` | Cancel the running statement, or close a dialog or menu |
+| Context menu key, `Shift+F10` | Open the menu for the focused cell or tree node |
+
+<Aside type="tip">
+The web app uses `Alt` for tabs because browsers keep `Ctrl+T` and `Ctrl+W` for themselves.
+</Aside>

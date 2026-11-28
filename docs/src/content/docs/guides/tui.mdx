@@ -1,0 +1,89 @@
+---
+title: The terminal UI
+description: Use tess tui to browse, query, and edit databases in any terminal, including over SSH.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Screenshot from '../../../components/Screenshot.astro';
+
+`tess tui` is Tessera in a terminal: an object tree, a SQL editor with tabs, and a result grid. It needs nothing but a terminal, so it works over SSH and inside containers.
+
+```sh
+tess tui          # pick a connection, or create one in a form
+tess tui app      # open a saved profile
+```
+
+<Screenshot name="tui-sql" alt="The terminal UI with the object tree, a query in the editor, and its results" />
+
+## Layout
+
+- **Objects** (left) is the object tree. Move with the arrow keys or `h` `j` `k` `l`, open with `Enter`, describe the selected object with `d`, and refresh with `r`. Opening a table browses it in the grid.
+- **Editor** (top right) holds the SQL of the current tab. The tab bar at the top shows each tab's connection.
+- **Grid** (bottom right) shows results. A script with several statements gives several results; switch between them with `[` and `]`.
+- The **status line** at the bottom shows the connection and the main keys. On a production connection it turns into a full-width coloured bar with the environment's name.
+
+`Alt+1`, `Alt+2`, and `Alt+3` focus the tree, editor, and grid; `Shift+Tab` moves to the next pane.
+
+## Running statements
+
+| Keys | Action |
+|---|---|
+| `F5` or `Ctrl+Enter` | Run the statement at the cursor |
+| `F6` | Run the whole script |
+| `Esc` | Cancel the running statement, on the server |
+| `Tab` or `Ctrl+Space` | Complete at the cursor: keywords, tables, columns |
+| `F7`, `F8` | Explain the statement, as text or as JSON |
+| `Ctrl+R` | Statement history for this connection |
+
+`Ctrl+Enter` needs a terminal that can report it, so `F5` always works. Statements that need confirmation show a prompt before anything runs; see [Safety](/guides/safety/).
+
+The grid holds at most 50,000 rows or 64 MiB per result. Past that the statement is cancelled and the grid says it was truncated. In an open PostgreSQL transaction, that cancel aborts the transaction. Use [`tess query`](/guides/cli/) to stream results of any size.
+
+## Browsing and editing
+
+Open a table from the tree to browse it, with sorting and filtering done on the server. In the grid:
+
+| Keys | Action |
+|---|---|
+| Arrows or `h` `j` `k` `l` | Move |
+| `PgUp`, `PgDn`, `g`, `G` | Page, jump to the first or last row |
+| `Enter` | Edit the cell, or show it when the table cannot be edited |
+| `v` | Show the whole value |
+| `s` | Sort by the column |
+| `f` or `/` | Filter |
+| `c` | Clear filters |
+| `u` | Undo an edit |
+
+In the edit box, `Enter` saves, `Alt+Enter` adds a line, `Ctrl+N` sets NULL, and `Esc` cancels.
+
+Edits stay pending until you press `Ctrl+S`, which previews the exact SQL. Confirm it to apply every pending edit in one transaction. If someone else changed a row since you read it, nothing is applied and you see a conflict.
+
+## Tabs and connections
+
+| Keys | Action |
+|---|---|
+| `Alt+T`, `Alt+W` | New tab, close tab |
+| `Alt+]`, `Alt+[` | Next, previous tab |
+| `Alt+C` | Switch connection, or create one |
+
+Each tab has its own session, so a transaction open in one tab does not affect another. The connection form is built from the database's own form, the same one the web app shows, and saves the password in the encrypted vault.
+
+## Command palette and help
+
+`Ctrl+K` opens the command palette. Type to filter actions, then press `Enter`. Every action is there, including those without a key, such as *New connection* and *Refresh object tree*.
+
+<Screenshot name="tui-palette" alt="The command palette filtered to actions about tabs" />
+
+`F1` lists every key, pane by pane. The palette, help, and keys all come from one registry, so they always agree.
+
+<Screenshot name="tui-help" alt="The help screen listing keys" />
+
+## Themes and colour
+
+`F9` cycles the theme between *system*, *light*, and *dark*, and remembers the choice in `config.toml`. *System* asks the terminal for its background colour. Colours are true colour where the terminal supports it and degrade to 256 or 16 colours. Set `NO_COLOR` to turn colour off.
+
+<Aside type="tip">
+`Ctrl+Q` quits. Closing the TUI closes its sessions, which rolls back any transaction you left open.
+</Aside>
