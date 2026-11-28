@@ -358,7 +358,7 @@ Design sections 6 and 11. Its own module in `plugins/duckdb`, because the DuckDB
 - [x] Release 0.2.0 (CLI and TUI)
 - [x] Include the web app in releases, once `tess serve` exists
 - [ ] Nightly benchmarks on fixed hardware, with published results
-- [ ] User docs and a threat model page
+- [x] User docs and a threat model page: an Astro Starlight site in `docs/`, published to GitHub Pages on release tags and on demand
 - [ ] External security audit, with findings resolved
 - [ ] Release v1.0
 

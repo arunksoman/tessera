@@ -1,0 +1,96 @@
+---
+title: Quick start
+description: Add a connection, run a query, and open the terminal UI and the web app, in five minutes.
+sidebar:
+  order: 3
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Screenshot from '../../../components/Screenshot.astro';
+
+This page assumes `tess` is [installed](/start/install/) and on your `PATH`.
+
+<Steps>
+
+1. **Add a connection profile.** A profile is a saved connection with a name. The password is read from standard input and stored encrypted; it never goes in a flag, your shell history, or the config file.
+
+	<Tabs syncKey="db">
+		<TabItem label="PostgreSQL">
+			```sh
+			tess profile add app --tile postgres --host db.example.com --user app --database app --password-stdin
+			```
+		</TabItem>
+		<TabItem label="MySQL / MariaDB">
+			```sh
+			tess profile add app --tile mysql --host db.example.com --user app --database app --password-stdin
+			```
+		</TabItem>
+		<TabItem label="SQLite">
+			```sh
+			tess profile add notes --tile sqlite --set path=./notes.db --set create=true
+			```
+			SQLite needs no password. Without `create=true`, tess only opens a file that exists, so a typo never creates an empty database.
+		</TabItem>
+	</Tabs>
+
+	On a terminal, tess asks for the password without echoing it. In a script, pipe it in: `printf '%s\n' "$DB_PASSWORD" | tess profile add ...`.
+
+	<Aside type="caution">
+	New remote profiles verify the server's TLS certificate and host name. If your server has no TLS, or a self-signed certificate, pass `--tls` with a weaker mode, such as `--tls disable` for a local test database. tess warns about every weak setting.
+	</Aside>
+
+2. **Check that it connects.**
+
+	```sh
+	tess connect app
+	# connected to app in 41ms
+	```
+
+3. **Run a query.** Results stream as a table. Add `-f csv` or `-f json` for other formats.
+
+	```sh
+	tess query -c app "SELECT id, email FROM users ORDER BY id LIMIT 5"
+	tess query -c app -f csv "SELECT * FROM orders" > orders.csv
+	```
+
+	A statement that could destroy data, such as `DELETE` without `WHERE`, asks before it runs. See [Safety](/guides/safety/).
+
+4. **Open the terminal UI.**
+
+	```sh
+	tess tui app
+	```
+
+	Type a statement in the editor and press `F5` or `Ctrl+Enter`. Press `Ctrl+K` for the command palette, `F1` for help, and `Ctrl+Q` to quit.
+
+	<Screenshot name="tui-sql" alt="The terminal UI with the object tree, editor, and result grid" />
+
+5. **Open the web app.**
+
+	```sh
+	tess serve
+	```
+
+	tess starts a server on `127.0.0.1`, opens your browser on a one-time sign-in link, and prints the link too. Pick your connection on the start page.
+
+	<Screenshot name="web-start" alt="The web app start page listing saved connections" />
+
+</Steps>
+
+## Try it on sample data
+
+The repository ships the [Sakila](https://dev.mysql.com/doc/sakila/en/) sample database, a DVD rental store with 1,000 films and 16,044 rentals, for PostgreSQL, MySQL, MariaDB, and SQLite. The screenshots in these docs use it. With Docker:
+
+```sh
+git clone https://github.com/arunksoman/tessera && cd tessera
+docker compose up -d --wait
+printf 'tessera_dev\n' | tess profile add sakila --tile postgres --host 127.0.0.1 --port 55418 \
+  --user tessera --database sakila --tls disable --password-stdin
+tess tui sakila
+```
+
+## Where next
+
+- [The web app](/guides/web/) and [the terminal UI](/guides/tui/) in depth.
+- [The command line](/guides/cli/) for scripting.
+- [Your database](/databases/postgresql/): connection options and what each one supports.

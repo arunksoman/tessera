@@ -2,7 +2,9 @@
 
 An open-source database client with a plugin for each database. A tessera is a single tile in a mosaic: each plugin is a tile, and together they form one picture of your data.
 
-**Status: early development.** The `tess` command-line client and terminal UI work with PostgreSQL, MySQL, MariaDB, and SQLite. The web app is not built yet. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
+**Documentation: https://arunksoman.github.io/tessera/**
+
+**Status: early development.** The `tess` command-line client, terminal UI, and web app work with PostgreSQL, MySQL, MariaDB, and SQLite, and DuckDB through a plugin. See [the task list](design-spec/task.md) and [the design](design-spec/design.md).
 
 ## Install
 

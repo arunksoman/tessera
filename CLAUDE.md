@@ -9,6 +9,7 @@ Tessera is a plugin-based database client in Go. The `tess` command-line client,
 - [design-spec/design.md](design-spec/design.md): the architecture, including parts not yet built.
 - [design-spec/task.md](design-spec/task.md): the checklist that drives the work.
 - [design-spec/spike-results.md](design-spec/spike-results.md): measurements behind design decisions.
+- [docs/](docs/): the user and plugin-author docs, an Astro Starlight site published to GitHub Pages at https://arunksoman.github.io/tessera/.
 
 ## Working rules
 
@@ -51,6 +52,8 @@ scripts/check-deps.sh                             # direct dependencies against 
 ```
 
 `internal/spike` holds Phase 0 measurements behind the `integration` tag and takes about a minute. To run the grid measurement, install Playwright outside the repo and run `PLAYWRIGHT_DIR=<dir> node web/spikes/grid/measure.mjs`. Add `HEADED=1` for visible windows, which must stay in the foreground, because a window behind others gets no animation frames.
+
+The docs build with `cd docs && npm ci --ignore-scripts && npm run build`. The docs workflow publishes them on each `v*` tag and on demand (`gh workflow run docs.yml`). Keep them in step with features: a user-visible change updates its page. Screenshots come in light and dark pairs from `docs/scripts/screenshots.mjs` (web, needs `make` and the compose databases) and `docs/scripts/tui-screenshots.sh` (TUI, VHS in Docker). The tutorial plugin in `docs/examples/tess-kv` is its own module and is tested in the docs workflow.
 
 Check grid themes with `PLAYWRIGHT_DIR=<dir> node web/spikes/grid/theme.mjs`.
 
